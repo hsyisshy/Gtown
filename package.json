@@ -1,0 +1,19 @@
+{
+  "name": "airconsole-game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "zip": "npm run build && cd dist && zip -r ../game.zip . && echo 'Created game.zip'"
+  },
+  "devDependencies": {
+    "vite": "^8.1.1"
+  },
+  "dependencies": {
+    "d3-delaunay": "^6.0.4",
+    "matter-js": "^0.20.0"
+  }
+}

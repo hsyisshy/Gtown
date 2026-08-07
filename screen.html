@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Party Game Hub — Screen</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700;900&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://www.airconsole.com/api/airconsole-1.8.0.js"></script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <!-- OPENING VIDEO: one-time splash, dismissed by the button, then never shown again -->
+  <div id="view-intro">
+    <video id="intro-video" src="Game_opening.mp4" playsinline></video>
+    <button id="intro-replay-btn">↻ 重播</button>
+    <button id="intro-start-btn" class="primary-btn">開始遊戲</button>
+  </div>
+
+  <div id="ui-overlay">
+
+    <!-- LOBBY: title is baked into the lobby_bd.png background art -->
+    <div id="view-lobby">
+      <p id="player-count"></p>
+      <div id="team-columns">
+        <div class="team-col">
+          <div class="team-col-header red">🔴 紅隊</div>
+          <div class="team-col-list" id="team-red-list"></div>
+        </div>
+        <div class="team-col">
+          <div class="team-col-header blue">🔵 藍隊</div>
+          <div class="team-col-list" id="team-blue-list"></div>
+        </div>
+      </div>
+      <p id="lobby-hint"></p>
+    </div>
+
+    <!-- GAME SELECT -->
+    <div id="view-game-select" class="hidden">
+      <h2>CHOOSE A GAME</h2>
+      <div id="game-select-scores" class="cumulative-scores"></div>
+      <p class="subtitle" id="game-select-subtitle">Host is picking…</p>
+      <div id="game-grid"></div>
+    </div>
+
+    <!-- MAP SELECT -->
+    <div id="view-map-select" class="hidden">
+      <h2 id="map-select-game-title"></h2>
+      <p class="subtitle">房主選擇地圖中…</p>
+      <div id="map-grid"></div>
+    </div>
+
+    <!-- RESULTS -->
+    <div id="view-results" class="hidden">
+      <h2>RESULTS</h2>
+      <div id="results-scoreboard"></div>
+      <p id="results-hint"></p>
+    </div>
+
+  </div>
+
+  <!-- TUTORIAL: shown when a game starts — gameplay holds until it's
+       dismissed (mouse skip or auto-countdown) -->
+  <div id="tutorial-overlay" class="hidden">
+    <div id="tutorial-panel">
+      <h2 id="tutorial-title"></h2>
+      <img id="tutorial-comic" class="hidden" alt="" />
+      <div class="tut-section">
+        <div class="tut-heading">🏆 目標</div>
+        <p id="tutorial-goal"></p>
+      </div>
+      <div class="tut-section">
+        <div class="tut-heading">🎮 操作</div>
+        <div id="tutorial-controls"></div>
+      </div>
+      <div class="tut-section" id="tutorial-tips-section">
+        <div class="tut-heading">💡 小撇步</div>
+        <div id="tutorial-tips"></div>
+      </div>
+      <button class="primary-btn" id="tutorial-start-btn">開始！</button>
+      <p id="tutorial-countdown"></p>
+    </div>
+  </div>
+
+  <!-- SETTINGS: bottom-right gear — BGM volume lives on this screen, the
+       button-SFX volume is broadcast to every controller -->
+  <div id="settings-root">
+    <div id="settings-panel" class="hidden">
+      <h3>設定</h3>
+      <label class="setting-row">
+        <span class="setting-label">🎵 背景音樂</span>
+        <input type="range" id="setting-bgm" min="0" max="100" step="5" />
+      </label>
+      <label class="setting-row">
+        <span class="setting-label">🔔 按鈕音效</span>
+        <input type="range" id="setting-sfx" min="0" max="100" step="5" />
+      </label>
+    </div>
+    <button id="home-btn" class="hidden" title="回到主畫面">🏠</button>
+    <button id="settings-btn" title="設定">⚙️</button>
+  </div>
+
+  <script type="module" src="/src/screen/main.js"></script>
+</body>
+</html>

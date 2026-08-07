@@ -1,0 +1,16 @@
+{
+  "name": "Party Game Hub Controller",
+  "short_name": "GameHub 手把",
+  "description": "掃碼加入派對遊戲的手機手把",
+  "start_url": "/controller.html",
+  "scope": "/",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#060015",
+  "theme_color": "#060015",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

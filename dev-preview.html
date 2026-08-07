@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>dev preview — game select grid</title>
+<link rel="stylesheet" href="/src/screen/style.css">
+</head>
+<body>
+  <div id="view-game-select">
+    <div id="game-select-scores"></div>
+    <p id="game-select-subtitle"></p>
+    <div id="game-grid"></div>
+  </div>
+  <script type="module">
+    import { GAMES } from '/src/games/registry.js';
+    import { TOTAL_GAME_SLOTS } from '/src/shared/constants.js';
+
+    const gameGridEl = document.getElementById('game-grid');
+
+    const randomCard = document.createElement('div');
+    randomCard.className = 'game-card has-cover random-pick';
+    randomCard.dataset.name = 'random';
+    randomCard.innerHTML = `<img class="game-cover" src="/random_start_cover.png" alt="隨機開始" />`;
+    gameGridEl.appendChild(randomCard);
+
+    GAMES.forEach(game => {
+      const card = document.createElement('div');
+      card.className = game.cover ? 'game-card has-cover' : 'game-card';
+      card.dataset.name = game.id;
+      card.style.setProperty('--game-color', game.color);
+      card.innerHTML = game.cover
+        ? `<img class="game-cover" src="${game.cover}" alt="${game.name}" />`
+        : `<span class="game-emoji">${game.emoji}</span><span class="game-name">${game.name}</span>`;
+      gameGridEl.appendChild(card);
+    });
+
+    const comingSoonCount = Math.max(0, TOTAL_GAME_SLOTS - GAMES.length - 1);
+    for (let i = 0; i < comingSoonCount; i++) {
+      const card = document.createElement('div');
+      card.className = 'game-card coming-soon';
+      card.dataset.name = `coming-soon-${i}`;
+      card.innerHTML = `<span class="game-emoji">❓</span><span class="game-name">敬請期待</span>`;
+      gameGridEl.appendChild(card);
+    }
+    window.__READY__ = true;
+  </script>
+</body>
+</html>

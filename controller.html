@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#060015" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <title>Party Game Hub — Controller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700;900&display=swap"
+    rel="stylesheet"
+  />
+  <script src="https://www.airconsole.com/api/airconsole-1.8.0.js"></script>
+</head>
+<body>
+
+  <!-- "你上場了！" Notification (shared, shown briefly on activation) -->
+  <div id="you-are-up" class="hidden">你上場了！</div>
+
+  <!-- Connecting -->
+  <div id="waiting">
+    <p>Connecting…</p>
+  </div>
+
+  <!-- Host transfer request (shown to current host only) -->
+  <div id="host-request" class="hidden">
+    <div class="host-request-box">
+      <p id="host-request-text"></p>
+      <div class="host-request-actions">
+        <button class="primary-btn" id="host-approve-btn">同意</button>
+        <button class="secondary-btn" id="host-deny-btn">拒絕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Transient toast (e.g. host denied your request) -->
+  <div id="ctrl-toast" class="hidden"></div>
+
+  <!-- In-game back-to-lobby (host only, two-tap confirm) -->
+  <button id="ingame-back-btn" class="hidden">↩ 大廳</button>
+
+  <!-- LOBBY: master -->
+  <div id="lobby-master" class="hidden">
+    <p class="role-tag">房主</p>
+    <div class="lobby-team-display">
+      <div id="lobby-master-team-badge" class="ctrl-team-badge"></div>
+      <div id="lobby-master-members" class="ctrl-member-list"></div>
+    </div>
+    <p id="lobby-master-count" class="hint"></p>
+    <button class="secondary-btn switch-team-btn">🔄 換隊伍</button>
+    <button class="primary-btn" id="start-btn">START</button>
+  </div>
+
+  <!-- LOBBY: non-master -->
+  <div id="lobby-player" class="hidden">
+    <div class="lobby-team-display">
+      <div id="lobby-player-team-badge" class="ctrl-team-badge"></div>
+      <div id="lobby-player-members" class="ctrl-member-list"></div>
+    </div>
+    <p id="lobby-player-count" class="hint"></p>
+    <button class="secondary-btn switch-team-btn">🔄 換隊伍</button>
+    <button class="secondary-btn" id="claim-host-btn">申請當房主</button>
+    <p class="hint">等待房主開始遊戲…</p>
+  </div>
+
+  <!-- GAME SELECT: master sees game list -->
+  <div id="game-select-master" class="hidden">
+    <div id="team-badge-master" class="team-badge"></div>
+    <p class="role-tag">HOST — Pick a game</p>
+    <div id="game-select-list"></div>
+    <button class="secondary-btn" id="game-select-back-btn">↩ 返回大廳</button>
+  </div>
+
+  <!-- GAME SELECT: non-master waits -->
+  <div id="game-select-player" class="hidden">
+    <div id="team-badge-player" class="team-badge"></div>
+    <p class="hint">Host is choosing a game…</p>
+  </div>
+
+  <!-- MAP SELECT: master picks map -->
+  <div id="map-select-master" class="hidden">
+    <div id="team-badge-map" class="team-badge"></div>
+    <p class="role-tag">選擇地圖</p>
+    <div id="map-select-list"></div>
+    <button class="secondary-btn" id="map-select-back-btn">↩ 返回大廳</button>
+  </div>
+
+  <!-- MAP SELECT: non-master waits -->
+  <div id="map-select-player" class="hidden">
+    <div id="team-badge-mapwait" class="team-badge"></div>
+    <p class="hint">房主正在選擇地圖…</p>
+  </div>
+
+  <!-- PLAYING: layout injected dynamically (active players) -->
+  <div id="controls" class="hidden">
+    <div id="team-badge-controls" class="team-badge team-badge--small"></div>
+    <!-- game layout mounts here -->
+    <div id="layout-root"></div>
+  </div>
+
+  <!-- CHEERING: watching players during game -->
+  <div id="cheering" class="hidden">
+    <div id="team-badge-cheer" class="team-badge team-badge--small"></div>
+    <p class="cheer-title">為隊友加油！</p>
+    <div class="cheer-grid">
+      <button class="cheer-btn" data-emoji="👏">👏</button>
+      <button class="cheer-btn" data-emoji="🔥">🔥</button>
+      <button class="cheer-btn" data-emoji="⚡">⚡</button>
+      <button class="cheer-btn" data-emoji="💥">💥</button>
+      <button class="cheer-btn" data-emoji="🎉">🎉</button>
+      <button class="cheer-btn" data-emoji="❤️">❤️</button>
+    </div>
+    <p class="cheer-hint">你的隊友正在比賽</p>
+  </div>
+
+  <!-- RESULTS: master -->
+  <div id="results-master" class="hidden">
+    <p class="role-tag">HOST</p>
+    <button class="primary-btn" id="play-again-btn">PLAY AGAIN</button>
+    <button class="secondary-btn" id="back-to-lobby-btn">LOBBY</button>
+  </div>
+
+  <!-- RESULTS: non-master -->
+  <div id="results-player" class="hidden">
+    <p class="hint">Waiting for host…</p>
+  </div>
+
+  <script type="module" src="/src/controller/main.js"></script>
+</body>
+</html>
+

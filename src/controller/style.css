@@ -1,0 +1,798 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 100%; height: 100%;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+body {
+  background: radial-gradient(ellipse 100% 60% at 50% 0%, #1a0040 0%, #060015 60%);
+  color: #fff;
+  font-family: 'Noto Sans TC', 'PingFang TC', '微軟正黑體', sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100svw;
+  height: 100svh;
+  overflow: hidden;
+  position: relative; /* anchor for absolute-positioned #controls */
+  /* The portrait auto-rotate hack below swaps svw/svh, so a single axis
+     doesn't consistently mean "screen width" — but the long edge is
+     always the larger raw viewport dimension and the short edge is
+     always the smaller one, in both the rotated and un-rotated case. */
+  --lw: max(100svw, 100svh);
+  --lh: min(100svw, 100svh);
+}
+
+.hidden { display: none !important; }
+
+/* ── Auto-rotate UI when device is in portrait ── */
+/* iOS inside an iframe can't trigger system rotation,  */
+/* so we CSS-transform the body to simulate landscape.  */
+@media (orientation: portrait) {
+  body {
+    position: fixed;
+    width: 100svh;   /* swap: landscape width = portrait height */
+    height: 100svw;  /* swap: landscape height = portrait width  */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(90deg);
+  }
+}
+
+/* ── Shared UI ── */
+.hint {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #a090cc;
+  text-align: center;
+  line-height: 1.8;
+  letter-spacing: 0.06em;
+}
+
+.role-tag {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #ffd700;
+  letter-spacing: 0.12em;
+  text-align: center;
+  text-shadow: 0 0 12px rgba(255, 210, 0, 0.7);
+}
+
+/* ── Lobby team display ──
+   Same village-sticker language as the screen's team columns: solid
+   painted gradients, dark ink borders, flat drop-shadows (no glow). */
+.lobby-team-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.ctrl-team-badge {
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 8px 28px;
+  border-radius: 50px;
+  border: 3px solid #2b2015;
+  color: #fff8ec;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+.ctrl-team-badge.red {
+  background: linear-gradient(180deg, #ff9d76 0%, #e8543f 55%, #c73a2a 100%);
+  box-shadow: 0 4px 0 #7a2416, 0 6px 12px rgba(60, 20, 10, 0.35);
+}
+.ctrl-team-badge.blue {
+  background: linear-gradient(180deg, #8ec3f0 0%, #4a7fc4 55%, #305f9e 100%);
+  box-shadow: 0 4px 0 #1c3c69, 0 6px 12px rgba(10, 30, 60, 0.35);
+}
+
+.ctrl-member-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.ctrl-member-chip {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 20px;
+  background: #fff8ec;
+  border: 1px solid rgba(43, 32, 21, 0.35);
+  color: #4a2f18;
+}
+.ctrl-member-chip.me {
+  background: linear-gradient(180deg, #ffe9a8 0%, #ffd000 100%);
+  border-color: #a04000;
+  color: #6b2a00;
+  font-weight: 900;
+}
+
+/* ── Team badge ── */
+.team-badge {
+  display: none;
+  font-size: 0.9rem;
+  padding: 6px 14px;
+  border: 2px solid;
+  border-radius: 20px;
+  text-align: center;
+}
+.team-badge--small { font-size: 0.65rem; padding: 4px 10px; }
+
+/* ── Buttons ── */
+.primary-btn {
+  padding: 14px 32px;
+  background: linear-gradient(180deg, #fff0a0 0%, #ffd000 30%, #ff9a00 70%, #e06000 100%);
+  color: #6b2a00;
+  border: none;
+  border-radius: 50px;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 1.2rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 5px 0 #a04000, 0 8px 20px rgba(255,160,0,0.5);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+}
+.primary-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 #a04000, 0 3px 10px rgba(255,160,0,0.4);
+}
+
+.secondary-btn {
+  padding: 10px 24px;
+  background: transparent;
+  color: #a090cc;
+  border: 2px solid rgba(160, 140, 200, 0.4);
+  border-radius: 50px;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.secondary-btn:active { border-color: #c0b0ff; color: #fff; }
+
+/* ── Lobby / Game Select / Map Select / Results ──
+   Same village square as the screen (minus the baked-in title — the
+   phone doesn't need its own copy of the logo), full-bleed behind
+   every phase's content so the controller matches the big screen's
+   look at every step of the same village square. */
+#lobby-master, #lobby-player,
+#game-select-master, #game-select-player,
+#map-select-master, #map-select-player,
+#results-master, #results-player {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2.4svh, 22px);
+  padding: 4svh 6svw;
+  background-image: url(/empaty_bg.png);
+  background-size: cover;
+  background-position: center;
+}
+
+/* Painted-sign text treatment (matches the screen's lobby) so labels
+   stay legible over the busy village art instead of the dark-theme
+   glow used on the other (still dark-background) controller phases. */
+#lobby-master .role-tag, #lobby-player .role-tag,
+#lobby-master .hint,      #lobby-player .hint,
+#game-select-master .role-tag, #game-select-player .hint,
+#map-select-master .role-tag,  #map-select-player .hint,
+#results-master .role-tag,     #results-player .hint {
+  color: #4a2f18;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+/* Wood-plaque secondary button, in place of the dark theme's
+   transparent/purple outline which would vanish against the art. */
+.switch-team-btn,
+#results-master .secondary-btn,
+#game-select-master .secondary-btn {
+  background: #fff8ec;
+  color: #4a2f18;
+  border: 2px solid #2b2015;
+  box-shadow: 0 3px 0 rgba(43, 32, 21, 0.4);
+}
+.switch-team-btn:active,
+#results-master .secondary-btn:active,
+#game-select-master .secondary-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(43, 32, 21, 0.4);
+  border-color: #2b2015;
+  color: #4a2f18;
+}
+
+/* In the portrait rotate-90 hack, list scrolling is driven by JS
+   (enableRotatedTouchScroll) — claim the whole gesture with
+   touch-action:none so Safari doesn't try to pan an ancestor and
+   pointercancel our drag mid-scroll. Landscape keeps native scrolling. */
+@media (orientation: portrait) {
+  #game-select-list,
+  #map-select-list {
+    touch-action: none;
+  }
+}
+
+/* ── Game Select ── */
+#game-select-master {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* The max-width belongs on the list, not #game-select-master itself —
+   that container is also the full-bleed village-background host (see
+   above), so capping ITS width left the background from filling the
+   screen on wide/landscape phones. */
+#game-select-list {
+  /* 3×2 grid mirroring the screen's cover-card wall — same order, the
+     phone is just a shrunk-down copy of the TV. */
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  align-content: center;
+  width: 100%;
+  max-width: 560px;
+  /* NOT max-height:80svh — inside the portrait rotate-90 hack the body is
+     only --lh (short edge) tall, so an svh-based cap never engaged and the
+     list overflowed unscrollably. Flex-fill the space between the title
+     and the back button instead, and scroll within that. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* NOT pan-y: touch-action works in SCREEN coordinates, so inside the
+     portrait rotate-90 hack the gesture that scrolls this (locally
+     vertical) list is a horizontal screen pan — pan-y blocked it. */
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Cream signboard button, matching the screen's game-card and the
+   controller's own wood-plaque .switch-team-btn — a village shop sign
+   you tap instead of a sci-fi tile. */
+.game-select-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: 3px solid #2b2015;
+  border-radius: 14px;
+  color: #4a2f18;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(43, 32, 21, 0.45);
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+.game-select-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(43, 32, 21, 0.45);
+  background: linear-gradient(180deg, #f8ecd2 0%, #eddaa8 100%);
+}
+.gs-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--game-color, #8855ff) 65%, #fff),
+    var(--game-color, #8855ff)
+  );
+  border: 2px solid #2b2015;
+  font-size: 1.1rem;
+  font-family: sans-serif;
+}
+.gs-name  { font-size: 0.85rem; font-weight: 800; }
+
+/* Cover art IS the button — same treatment as the screen's has-cover
+   cards: strip the signboard chrome, the artwork's baked frame takes over. */
+.game-select-btn.has-cover {
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  justify-content: center;
+}
+.game-select-btn.has-cover:active {
+  background: none;
+  transform: translateY(2px);
+  box-shadow: none;
+}
+.gs-cover {
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 0 rgba(43, 32, 21, 0.45));
+}
+
+/* Empty slot in the planned lineup — same treatment as the screen's
+   .game-card.coming-soon: dashed, flattened, muted badge, non-interactive.
+   Column layout + matched aspect so it sits flush with the cover cells. */
+.game-select-btn.coming-soon {
+  flex-direction: column;
+  justify-content: center;
+  aspect-ratio: 3 / 2;
+  gap: 6px;
+  padding: 8px;
+  font-size: 0.7rem;
+  background: linear-gradient(180deg, #f3ede2 0%, #e6dcc8 100%);
+  border-style: dashed;
+  box-shadow: none;
+  color: rgba(74, 47, 24, 0.5);
+  cursor: default;
+}
+.game-select-btn.coming-soon .gs-emoji {
+  background: #d8cbb0;
+  border-style: dashed;
+}
+
+/* ── In-game controls wrapper: fills the entire body ── */
+#controls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Soft daylight-sky gradient — reads as the open plaza above, and the
+     cool tone lets the saturated MOBA-style buttons (blue d-pad, team
+     colors) pop instead of fighting a warm/yellow ground. */
+  background: linear-gradient(180deg, #eef4fb 0%, #cdddf0 100%);
+  /* Compact MOBA-style clusters: buttons no longer stretch to fill the
+     screen — small enough to roll a thumb across, anchored bottom-right. */
+  --btn-size: clamp(36px, min(calc(var(--lh) * 0.12), calc((var(--lw) * 0.94 - 16px) / 6.4)), 68px);
+  --btn-gap:  clamp(4px, calc(var(--lh) * 0.02), 10px);
+}
+
+#team-badge-controls {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  pointer-events: none;
+}
+
+#layout-root {
+  position: absolute;
+  inset: 0;
+}
+
+/* ── Gamepad landscape layout ── */
+.gamepad-layout {
+  position: relative; /* anchor for the floating joystick zone */
+  display: flex;
+  /* Sink both clusters to the bottom corners (MOBA-style thumb reach)
+     instead of vertically centering them. */
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+  /* Nudge everything toward the screen's right edge, away from
+     AirConsole's own icons docked on the left. */
+  padding-top:    0;
+  padding-bottom: calc(var(--lh) * 0.04);
+  padding-right:  calc(var(--lw) * 0.02);
+  padding-left:   calc(var(--lw) * 0.03 + 44px);
+}
+
+/* In the portrait auto-rotate hack, local left/right becomes visual
+   top/bottom after the 90deg rotation — so the "shift right" nudge has
+   to move along the local vertical axis instead to land in the same
+   visual direction. */
+@media (orientation: portrait) {
+  .gamepad-layout {
+    padding-left:   calc(var(--lw) * 0.03);
+    padding-right:  calc(var(--lw) * 0.02);
+    padding-top:    0;
+    padding-bottom: calc(var(--lh) * 0.04 + 44px);
+  }
+}
+
+.gamepad-left,
+.gamepad-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Floating joystick ── */
+/* Touch zone: the whole left half of the pad. The stick centers on
+   wherever the finger first lands inside it. */
+.joy-zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 55%;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  z-index: 1;
+}
+
+.joy-base {
+  --joy-size: clamp(110px, calc(var(--lh) * 0.34), 190px);
+  position: absolute;
+  width: var(--joy-size);
+  height: var(--joy-size);
+  /* Idle resting spot (bottom-left); active position is set inline by JS
+     at the touch point. Centered on the coordinate either way. */
+  left: 32%;
+  top: 68%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  /* Ink-and-cream ring so the stick reads on the village art, matching
+     the signboard language instead of the old flat-gray theme. */
+  border: 3px solid rgba(43, 32, 21, 0.55);
+  background: radial-gradient(circle, rgba(255, 253, 246, 0.30) 0%, rgba(255, 253, 246, 0.12) 70%);
+  pointer-events: none; /* the zone handles all input */
+  transition: opacity 0.15s;
+}
+.joy-base.idle { opacity: 0.4; }
+
+/* Games that don't use the stick still show it — dimmed and inert, same
+   treatment as unused .abxy-btn.inactive face buttons. */
+.joy-zone.inactive {
+  pointer-events: none;
+}
+.joy-zone.inactive .joy-base { opacity: 0.2; }
+
+.joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46%;
+  height: 46%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: linear-gradient(160deg, color-mix(in srgb, #8fb3e8 60%, #fff) 0%, #8fb3e8 55%, color-mix(in srgb, #8fb3e8 80%, #000) 100%);
+  border: 3px solid #1f3b73;
+  box-shadow: 0 4px 8px rgba(20, 30, 60, 0.3);
+}
+
+/* ── D-pad ── */
+.dpad-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, var(--btn-size));
+  grid-template-rows: repeat(3, var(--btn-size));
+  gap: var(--btn-gap);
+}
+
+.dpad-btn {
+  --btn-color: #8fb3e8;
+  --btn-border: #1f3b73;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--btn-color) 60%, #fff) 0%, var(--btn-color) 55%, color-mix(in srgb, var(--btn-color) 80%, #000) 100%);
+  border: clamp(2px, calc(var(--lh) * 0.012), 4px) solid var(--btn-border);
+  border-radius: 30%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 0 var(--btn-border), 0 8px 14px rgba(20, 30, 60, 0.25);
+  transition: transform 0.06s, box-shadow 0.06s;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.dpad-btn:active, .dpad-btn.pressed {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--btn-border), 0 2px 6px rgba(20, 30, 60, 0.25);
+}
+.dpad-btn.inactive {
+  opacity: 0.28;
+  cursor: default;
+  pointer-events: none;
+}
+
+.dpad-up    { grid-column: 2; grid-row: 1; }
+.dpad-left  { grid-column: 1; grid-row: 2; }
+.dpad-right { grid-column: 3; grid-row: 2; }
+.dpad-down  { grid-column: 2; grid-row: 3; }
+
+.dpad-chevron {
+  width: 46%;
+  height: 46%;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.15));
+}
+.dpad-down  > .dpad-chevron { transform: rotate(180deg); }
+.dpad-left  > .dpad-chevron { transform: rotate(-90deg); }
+.dpad-right > .dpad-chevron { transform: rotate(90deg); }
+
+/* ── ABXY diamond ── */
+.abxy-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, var(--btn-size));
+  grid-template-rows: repeat(3, var(--btn-size));
+  gap: var(--btn-gap);
+}
+
+.abxy-btn {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--btn-color) 60%, #fff) 0%, var(--btn-color) 55%, color-mix(in srgb, var(--btn-color) 80%, #000) 100%);
+  border: clamp(2px, calc(var(--lh) * 0.012), 4px) solid var(--btn-border);
+  border-radius: 30%;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: clamp(0.95rem, calc(var(--lh) * 0.05), 1.6rem);
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.35), 0 -1px 1px rgba(0,0,0,0.15);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 5px 0 var(--btn-border), 0 8px 14px rgba(20, 30, 60, 0.25);
+  transition: transform 0.06s, box-shadow 0.06s;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.abxy-btn:active, .abxy-btn.pressed {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--btn-border), 0 2px 6px rgba(20, 30, 60, 0.25);
+}
+.abxy-btn.inactive {
+  opacity: 0.28;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Y top-center, X mid-left, B mid-right, A bottom-center */
+.btn-y { --btn-color: #9ed6a0; --btn-border: #2e6b39; grid-column: 2; grid-row: 1; }
+.btn-x { --btn-color: #8fb3e8; --btn-border: #1f3b73; grid-column: 1; grid-row: 2; }
+.btn-b { --btn-color: #f4d879; --btn-border: #8a6d23; grid-column: 3; grid-row: 2; }
+.btn-a { --btn-color: #e9908f; --btn-border: #8a2e2e; grid-column: 2; grid-row: 3; }
+
+/* ── Map Select ── */
+#map-select-master {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Same fix as #game-select-list — max-width belongs on the list, not the
+   full-bleed background host. */
+#map-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 400px;
+  /* Same svh-inside-rotated-body fix as #game-select-list */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* NOT pan-y: touch-action works in SCREEN coordinates, so inside the
+     portrait rotate-90 hack the gesture that scrolls this (locally
+     vertical) list is a horizontal screen pan — pan-y blocked it. */
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Cream signboard, matching .game-select-btn — pick a map the same
+   way you pick a game. */
+.map-select-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: 3px solid #2b2015;
+  border-radius: 14px;
+  color: #4a2f18;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  cursor: pointer;
+  text-align: center;
+  box-shadow: 0 4px 0 rgba(43, 32, 21, 0.45);
+  transition: transform 0.06s, box-shadow 0.06s;
+}
+
+.ms-name {
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.ms-desc {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(74, 47, 24, 0.65);
+}
+.map-select-btn:active:not(.disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(43, 32, 21, 0.45);
+  background: linear-gradient(180deg, #f8ecd2 0%, #eddaa8 100%);
+}
+
+/* Locked mode (e.g. 2v2 without two per team): greyed and untappable, but
+   still listed so the player sees the mode and its "每隊需滿 2 人" hint. */
+.map-select-btn.disabled {
+  filter: grayscale(0.85) brightness(0.92);
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: 0 2px 0 rgba(43, 32, 21, 0.3);
+}
+
+#map-select-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ── Cheering (watching during game) ── */
+#cheering {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 0 16px;
+}
+
+.cheer-title {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: #ffe555;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 12px rgba(255,220,0,0.6);
+}
+
+.cheer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 280px;
+}
+
+.cheer-btn {
+  aspect-ratio: 1;
+  font-size: 1.6rem;
+  font-family: sans-serif;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+  transition: transform 0.07s, box-shadow 0.07s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cheer-btn:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.2);
+}
+
+.cheer-hint {
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.4);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+/* ── "你上場了！" Notification ── */
+#you-are-up {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #ffe555;
+  text-shadow: 0 0 32px rgba(255,220,0,0.9), 0 0 8px rgba(255,180,0,0.7);
+  z-index: 9999;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+/* ── Results ── */
+#results-master, #results-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* ── Host transfer request dialog + toast ── */
+#host-request {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 9000;
+}
+
+.host-request-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 28px;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: 3px solid #2b2015;
+  border-radius: 16px;
+  box-shadow: 0 6px 0 rgba(43, 32, 21, 0.45);
+}
+
+#host-request-text {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #4a2f18;
+}
+
+.host-request-actions {
+  display: flex;
+  gap: 14px;
+}
+
+#ctrl-toast {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 22px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #ffe555;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 30px;
+  z-index: 9500;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ── In-game back-to-lobby (host only) ── */
+#ingame-back-btn {
+  position: fixed;
+  top: 8px;
+  right: 10px;
+  z-index: 8000;
+  padding: 6px 14px;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 30px;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#ingame-back-btn.confirming {
+  background: #c73a2a;
+  border-color: #fff;
+  color: #fff;
+}

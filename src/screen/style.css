@@ -1,0 +1,886 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── BASE ── */
+body {
+  background:
+    radial-gradient(ellipse 90% 55% at 50% -5%, #2a005a 0%, transparent 65%),
+    radial-gradient(ellipse 28% 70% at 10% 0%,  rgba(255, 50, 180, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 28% 70% at 90% 0%,  rgba(60, 120, 255, 0.28) 0%, transparent 60%),
+    radial-gradient(ellipse 18% 50% at 50% 0%,  rgba(255, 220, 0, 0.14) 0%, transparent 50%),
+    linear-gradient(180deg, #090020 0%, #040010 100%);
+  color: #fff;
+  font-family: 'Noto Sans TC', 'PingFang TC', '微軟正黑體', sans-serif;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+#canvas {
+  display: block;
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#ui-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.hidden { display: none !important; }
+
+/* ── INTRO / OPENING VIDEO ── */
+#view-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: #000;
+}
+
+#intro-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+#intro-start-btn {
+  position: relative;
+  z-index: 1;
+  margin-bottom: clamp(40px, 10vh, 110px);
+}
+
+/* Small translucent replay control, corner-parked so it never competes
+   with the main start button. */
+#intro-replay-btn {
+  position: absolute;
+  top: clamp(14px, 3vh, 28px);
+  right: clamp(14px, 2vw, 28px);
+  z-index: 1;
+  padding: 8px 18px;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 30px;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: clamp(0.7rem, 1.2vw, 0.95rem);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+#intro-replay-btn:hover {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* Screen version of the controller's primary-btn — same gold gradient
+   and shape, sized up for a TV viewed from across the room. */
+.primary-btn {
+  padding: clamp(16px, 2vh, 24px) clamp(40px, 5vw, 72px);
+  background: linear-gradient(180deg, #fff0a0 0%, #ffd000 30%, #ff9a00 70%, #e06000 100%);
+  color: #6b2a00;
+  border: none;
+  border-radius: 50px;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: clamp(1.1rem, 2.4vw, 1.8rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  box-shadow: 0 6px 0 #a04000, 0 10px 28px rgba(255, 160, 0, 0.5);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.12s;
+}
+/* Hover pairs with the hover SFX cue — the button lights up and lifts */
+.primary-btn:hover {
+  filter: brightness(1.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #a04000, 0 14px 36px rgba(255, 200, 0, 0.75);
+}
+.primary-btn:active {
+  transform: translateY(5px);
+  box-shadow: 0 1px 0 #a04000, 0 4px 12px rgba(255, 160, 0, 0.4);
+}
+
+/* ── LOBBY ──
+   lobby_bd.png bakes the title + village art into the top ~half; the
+   open plaza in the lower half is where the team rosters belong. */
+#view-lobby {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: clamp(14px, 2.2vh, 28px);
+  text-align: center;
+  width: 100%;
+  padding: clamp(260px, 46svh, 620px) 32px 6svh;
+  background-image: url(/lobby_bd.png);
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+/* "painted sign" text treatment — dark ink fill + cream outline, so it
+   reads clearly over both the sky and the stone plaza. */
+#player-count {
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  font-weight: 800;
+  color: #4a2f18;
+  letter-spacing: 0.06em;
+  text-shadow:
+    -1.5px -1.5px 0 #fff6dd, 1.5px -1.5px 0 #fff6dd,
+    -1.5px  1.5px 0 #fff6dd, 1.5px  1.5px 0 #fff6dd,
+    0 3px 6px rgba(0, 0, 0, 0.2);
+}
+
+/* ── TEAM COLUMNS ──
+   Spread wide to echo the shops framing the plaza left/right. */
+#team-columns {
+  display: flex;
+  gap: clamp(40px, 10vw, 160px);
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  max-width: min(1300px, 90%);
+}
+
+.team-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 420px;
+}
+
+.team-col-header {
+  font-size: clamp(1.3rem, 3.2vw, 2.2rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 10px 34px;
+  border-radius: 50px;
+  border: clamp(3px, 0.4vw, 5px) solid #2b2015;
+  color: #fff8ec;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.team-col-header.red {
+  background: linear-gradient(180deg, #ff9d76 0%, #e8543f 55%, #c73a2a 100%);
+  box-shadow: 0 5px 0 #7a2416, 0 8px 16px rgba(60, 20, 10, 0.35);
+}
+
+.team-col-header.blue {
+  background: linear-gradient(180deg, #8ec3f0 0%, #4a7fc4 55%, #305f9e 100%);
+  box-shadow: 0 5px 0 #1c3c69, 0 8px 16px rgba(10, 30, 60, 0.35);
+}
+
+/* Roster density adapts to headcount (data-size set by renderLobby):
+   a handful of players get the roomy single column; past that the list
+   folds into 2 then 3 columns with smaller cards, so even a lopsided
+   20-player lobby stays fully on screen instead of clipping names. */
+.team-col-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
+.player-card {
+  min-width: 0; /* let grid tracks shrink the card instead of overflowing */
+  border-radius: 14px;
+  padding: 12px 22px;
+  font-size: clamp(1rem, 2.3vw, 1.45rem);
+  font-weight: 800;
+  color: #fff8ec;
+  letter-spacing: 0.04em;
+  border: 3px solid rgba(30, 20, 10, 0.55);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.team-col-list[data-size="medium"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.team-col-list[data-size="medium"] .player-card {
+  padding: 8px 12px;
+  font-size: clamp(0.85rem, 1.8vw, 1.15rem);
+}
+
+.team-col-list[data-size="dense"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.team-col-list[data-size="dense"] .player-card {
+  padding: 6px 8px;
+  font-size: clamp(0.75rem, 1.5vw, 1rem);
+  border-radius: 10px;
+  border-width: 2px;
+}
+
+.player-card-red {
+  background: linear-gradient(180deg, #ffab8c 0%, #e8543f 100%);
+  box-shadow: 0 4px 0 #7a2416, 0 6px 14px rgba(60, 20, 10, 0.3);
+}
+
+.player-card-blue {
+  background: linear-gradient(180deg, #a3cdf2 0%, #4a7fc4 100%);
+  box-shadow: 0 4px 0 #1c3c69, 0 6px 14px rgba(10, 30, 60, 0.3);
+}
+
+/* Host card: same team color but gilded — gold sheen at the top of the
+   gradient, gold border and glow, so the host reads at a glance without
+   leaving the team's color family. */
+.player-card-host {
+  border-color: #b8860b;
+}
+.player-card-red.player-card-host {
+  background: linear-gradient(180deg, #ffe08a 0%, #ffab8c 40%, #e8543f 100%);
+  box-shadow: 0 4px 0 #7a2416, 0 0 16px rgba(255, 208, 0, 0.55);
+}
+.player-card-blue.player-card-host {
+  background: linear-gradient(180deg, #ffe08a 0%, #a3cdf2 40%, #4a7fc4 100%);
+  box-shadow: 0 4px 0 #1c3c69, 0 0 16px rgba(255, 208, 0, 0.55);
+}
+
+#lobby-hint {
+  font-size: clamp(1.05rem, 2.4vw, 1.7rem);
+  font-weight: 700;
+  color: #4a2f18;
+  letter-spacing: 0.08em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+/* ── GAME SELECT ──
+   Same village square as the lobby (empaty_bg.png = lobby_bd.png minus
+   the baked-in title), so picking a game still feels like standing in
+   the plaza — cards read as shop signboards, not sci-fi tiles. */
+#view-game-select {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 3vh, 32px);
+  text-align: center;
+  width: 100%;
+  padding: 6svh 32px;
+  background-image: url(/empaty_bg.png);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#view-game-select h2 {
+  font-size: clamp(2.4rem, 7vw, 5rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #fff5b0 0%, #ffd700 40%, #ff8c00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  -webkit-text-stroke: clamp(2px, 0.3vw, 4px) #3a1d08;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 0 rgba(110, 25, 0, 0.9)) drop-shadow(0 0 28px rgba(255,180,0,0.5));
+}
+
+#view-game-select .subtitle {
+  font-size: clamp(0.85rem, 1.9vw, 1.25rem);
+  font-weight: 700;
+  color: #4a2f18;
+  letter-spacing: 0.12em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+/* Same pill component as the results screen, sized down a notch so the
+   hierarchy stays title > score > subtitle. */
+#view-game-select .cumulative-scores {
+  font-size: clamp(1.2rem, 3vw, 2rem);
+}
+
+#game-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 1080px;
+}
+
+/* Cream signboard, same "painted sign" language as the lobby's
+   team-col-header / player-card: dark ink border, flat drop-shadow,
+   per-game accent color pushed onto the icon badge instead of a glow. */
+.game-card {
+  /* Fixed per-card ratio so every card sizes off its own grid-column width
+     instead of the row's tallest sibling — otherwise a row mixing cover-art
+     cards with plain-text "coming soon" cards (shorter natural content)
+     shrinks the whole row, and the cover art shrinks along with it. */
+  aspect-ratio: 3 / 2;
+  /* Without this, a flex column's automatic minimum size is its content's
+     natural height — if that content (padding + emoji badge + gap + text)
+     needs more room than the 3:2 aspect-ratio allows, the browser grows the
+     box past the ratio to avoid clipping, silently breaking the match with
+     cover cards. min-height: 0 lets aspect-ratio actually win; the padding/
+     emoji sizing below is tuned to fit comfortably within it either way. */
+  min-height: 0;
+  border-radius: 20px;
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: clamp(3px, 0.4vw, 5px) solid #2b2015;
+  box-shadow:
+    0 6px 0 rgba(43, 32, 21, 0.55),
+    0 10px 24px rgba(40, 25, 10, 0.35);
+  transition: transform 0.1s;
+}
+
+.game-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(36px, 6vw, 56px);
+  height: clamp(36px, 6vw, 56px);
+  border-radius: 50%;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--game-color, #8855ff) 65%, #fff),
+    var(--game-color, #8855ff)
+  );
+  border: clamp(2px, 0.3vw, 4px) solid #2b2015;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.3);
+  font-size: clamp(1.1rem, 2.8vw, 1.8rem);
+  font-family: sans-serif;
+}
+
+.game-name {
+  font-size: clamp(0.55rem, 1.4vw, 0.8rem);
+  font-weight: 800;
+  color: #4a2f18;
+  letter-spacing: 0.06em;
+}
+
+/* Cover art IS the card — title and rounded frame are baked into the
+   artwork, so the signboard chrome (cream bg, ink border, padding) goes
+   away and the image fills the whole cell. flex:1 keeps mixed rows
+   (cover cards next to emoji cards) the same height. */
+.game-card.has-cover {
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.game-cover {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+  /* the art's transparent margins make it read smaller than the signboard
+     cards — scale up a touch to visually match (doesn't affect layout) */
+  transform: scale(1.12);
+  /* drop-shadow follows the art's alpha edge — same flat-sign shadow as
+     the other cards, but hugging the baked-in rounded frame */
+  filter:
+    drop-shadow(0 6px 0 rgba(43, 32, 21, 0.55))
+    drop-shadow(0 10px 24px rgba(40, 25, 10, 0.35));
+}
+
+.game-desc {
+  font-size: clamp(0.4rem, 1vw, 0.6rem);
+  font-weight: 700;
+  color: rgba(74, 47, 24, 0.65);
+}
+
+/* Empty slot in the planned lineup — dashed outline, flattened (no drop
+   shadow), muted badge instead of a per-game accent color, so it reads as
+   "not here yet" rather than a broken/miscolored game card. */
+.game-card.coming-soon {
+  background: linear-gradient(180deg, #f3ede2 0%, #e6dcc8 100%);
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.game-card.coming-soon .game-emoji {
+  background: #d8cbb0;
+  border-style: dashed;
+  box-shadow: none;
+}
+
+.game-card.coming-soon .game-name,
+.game-card.coming-soon .game-desc {
+  color: rgba(74, 47, 24, 0.5);
+}
+
+
+/* ── MAP SELECT ──
+   Same village plaza + cream signboard language as game select. */
+#view-map-select {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 3vh, 32px);
+  text-align: center;
+  width: 100%;
+  padding: 6svh 32px;
+  background-image: url(/empaty_bg.png);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#view-map-select h2 {
+  font-size: clamp(1rem, 3.5vw, 2.4rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  background: linear-gradient(180deg, #fff5b0 0%, #ffd700 40%, #ff8c00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  -webkit-text-stroke: clamp(2px, 0.3vw, 4px) #3a1d08;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 0 rgba(110, 25, 0, 0.9)) drop-shadow(0 0 28px rgba(255,180,0,0.5));
+}
+
+#view-map-select .subtitle {
+  font-size: clamp(0.5rem, 1.4vw, 0.8rem);
+  font-weight: 700;
+  color: #4a2f18;
+  letter-spacing: 0.12em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+#map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  width: 100%;
+  max-width: 900px;
+}
+
+.map-card {
+  border-radius: 18px;
+  padding: 26px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: clamp(3px, 0.4vw, 5px) solid #2b2015;
+  box-shadow:
+    0 6px 0 rgba(43, 32, 21, 0.55),
+    0 10px 24px rgba(40, 25, 10, 0.35);
+}
+
+.map-name {
+  font-size: clamp(0.6rem, 1.6vw, 1rem);
+  font-weight: 900;
+  color: #4a2f18;
+  letter-spacing: 0.06em;
+}
+
+.map-desc {
+  font-size: clamp(0.4rem, 0.9vw, 0.6rem);
+  font-weight: 700;
+  color: rgba(74, 47, 24, 0.65);
+}
+
+.map-card.waiting {
+  border-color: #ffb000;
+  box-shadow: 0 0 24px rgba(255, 176, 0, 0.5), 0 6px 0 rgba(43, 32, 21, 0.55);
+  animation: map-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes map-pulse {
+  0%, 100% { box-shadow: 0 0 24px rgba(255, 176, 0, 0.5), 0 6px 0 rgba(43, 32, 21, 0.55); }
+  50%       { box-shadow: 0 0 48px rgba(255, 200, 0, 0.85), 0 6px 0 rgba(43, 32, 21, 0.55); }
+}
+
+/* ── RESULTS ──
+   Same village plaza as lobby / game / map select, so the whole flow
+   feels like one place instead of switching worlds each screen. */
+#view-results {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  text-align: center;
+  width: 100%;
+  padding: 6svh 32px;
+  background-image: url(/empaty_bg.png);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+#view-results h2 {
+  font-size: clamp(2rem, 6vw, 4.6rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  background: linear-gradient(180deg, #fff0a0 0%, #ff8800 50%, #ff2200 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  -webkit-text-stroke: clamp(2px, 0.3vw, 4px) #3a1d08;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 5px 0 rgba(100, 10, 0, 0.9)) drop-shadow(0 0 36px rgba(255, 120, 0, 0.6));
+  animation: title-pulse 2s ease-in-out infinite;
+}
+
+@keyframes title-pulse {
+  0%, 100% { filter: drop-shadow(0 5px 0 rgba(100,10,0,0.9)) drop-shadow(0 0 36px rgba(255,120,0,0.6)); }
+  50%       { filter: drop-shadow(0 5px 0 rgba(100,10,0,0.9)) drop-shadow(0 0 60px rgba(255,180,0,0.9)); }
+}
+
+#results-scoreboard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Pills reuse the lobby's team-col-header language (painted gradient,
+   dark ink border, cream text) instead of glowing neon numbers. */
+.cumulative-scores {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: clamp(2rem, 5.5vw, 3.6rem);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.cum-score {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.2em 0.6em;
+  border-radius: 50px;
+  border: clamp(2px, 0.3vw, 4px) solid #2b2015;
+  color: #fff8ec;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.cum-score.red {
+  background: linear-gradient(180deg, #ff9d76 0%, #e8543f 55%, #c73a2a 100%);
+  box-shadow: 0 4px 0 #7a2416, 0 6px 12px rgba(60, 20, 10, 0.35);
+}
+
+.cum-score.blue {
+  background: linear-gradient(180deg, #8ec3f0 0%, #4a7fc4 55%, #305f9e 100%);
+  box-shadow: 0 4px 0 #1c3c69, 0 6px 12px rgba(10, 30, 60, 0.35);
+}
+
+.cum-divider {
+  color: #4a2f18;
+  font-size: 0.7em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+.cum-num { font-size: 1.5em; }
+
+.game-results-row {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.last-winner {
+  font-size: clamp(1rem, 2.4vw, 1.5rem);
+  font-weight: 700;
+  color: #a0670a;
+  letter-spacing: 0.1em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+/* Per-round team result plaque — same cream signboard as game/map
+   cards, with the team color pushed onto the border/badge instead of
+   a full neon-glow fill. */
+.team-result {
+  font-size: clamp(1.1rem, 3vw, 1.9rem);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  padding: 20px 40px;
+  border-radius: 18px;
+  border: clamp(3px, 0.4vw, 5px) solid var(--team-color, #2b2015);
+  color: #4a2f18;
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  box-shadow:
+    0 6px 0 rgba(43, 32, 21, 0.55),
+    0 10px 24px rgba(40, 25, 10, 0.35);
+}
+
+.team-result.winner {
+  animation: winner-glow 1.4s ease-in-out infinite;
+}
+
+@keyframes winner-glow {
+  0%, 100% { box-shadow: 0 6px 0 rgba(43, 32, 21, 0.55), 0 0 20px color-mix(in srgb, var(--team-color, #ffb000) 50%, transparent); }
+  50%       { box-shadow: 0 6px 0 rgba(43, 32, 21, 0.55), 0 0 40px color-mix(in srgb, var(--team-color, #ffb000) 85%, transparent); }
+}
+
+.tie {
+  font-size: clamp(1.1rem, 3vw, 1.9rem);
+  font-weight: 900;
+  color: #a0670a;
+  letter-spacing: 0.15em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+#results-hint {
+  font-size: clamp(0.8rem, 1.8vw, 1.15rem);
+  font-weight: 700;
+  color: #4a2f18;
+  letter-spacing: 0.1em;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
+}
+
+/* ── SETTINGS ──
+   Bottom-right gear + pop-up panel. Same visual family as the intro's
+   replay chip: translucent dark pill, soft white border, gold accents.
+   z-index above the intro (100) so volume stays reachable at any time. */
+#settings-root {
+  position: fixed;
+  right: clamp(14px, 2vw, 28px);
+  bottom: clamp(14px, 3vh, 28px);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+#settings-btn,
+#home-btn {
+  width: clamp(44px, 5vh, 56px);
+  height: clamp(44px, 5vh, 56px);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.75);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  font-size: clamp(1.2rem, 2.4vh, 1.6rem);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s,
+              transform 0.15s, filter 0.15s, box-shadow 0.15s;
+}
+
+#settings-btn:hover,
+#home-btn:hover {
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.9);
+  filter: brightness(1.3);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.45);
+}
+
+#settings-btn:hover { transform: rotate(30deg); }
+#home-btn:hover { transform: scale(1.1); }
+
+#settings-panel {
+  background: rgba(10, 4, 30, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 18px;
+  padding: 16px 20px;
+  min-width: 260px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+#settings-panel h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+  font-weight: 900;
+  color: #ffd000;
+  letter-spacing: 0.15em;
+  text-align: center;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+
+.setting-label {
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+}
+
+.setting-row input[type='range'] {
+  flex: 1;
+  accent-color: #ffd000;
+  cursor: pointer;
+}
+
+/* ── TUTORIAL ──
+   Full-screen scrim + centered card, same family as the settings panel:
+   translucent dark card, soft white border, gold headings. Sits below the
+   settings root (200) but above the game canvas and menu overlay. */
+#tutorial-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 2, 20, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+#tutorial-panel {
+  background: rgba(10, 4, 30, 0.92);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-radius: 24px;
+  padding: clamp(20px, 4vh, 36px) clamp(28px, 4vw, 52px);
+  width: min(680px, 86vw);
+  max-height: 86vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 50px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+#tutorial-panel h2 {
+  margin: 0 0 14px;
+  font-size: clamp(1.5rem, 3.4vh, 2.2rem);
+  font-weight: 900;
+  color: #ffd000;
+  letter-spacing: 0.12em;
+}
+
+#tutorial-comic {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 14px;
+  margin: 0 0 clamp(10px, 2vh, 18px);
+}
+
+.tut-section {
+  text-align: left;
+  margin-bottom: clamp(10px, 2vh, 18px);
+}
+
+.tut-heading {
+  font-size: clamp(0.9rem, 1.8vh, 1.1rem);
+  font-weight: 900;
+  color: rgba(255, 208, 0, 0.85);
+  letter-spacing: 0.15em;
+  margin-bottom: 6px;
+}
+
+.tut-section p,
+.tut-row,
+.tut-tip {
+  margin: 0;
+  font-size: clamp(0.95rem, 2vh, 1.2rem);
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.55;
+}
+
+.tut-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.tut-key {
+  flex: 0 0 auto;
+  min-width: 3.2em;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 1px 8px;
+  font-weight: 900;
+}
+
+.tut-tip { padding: 2px 0; }
+
+#tutorial-panel .primary-btn {
+  margin-top: clamp(6px, 1.5vh, 14px);
+}
+
+#tutorial-countdown {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── CLICKABLE GAME / MAP CARDS ──
+   The shared screen can pick a game with the mouse too. #ui-overlay drops
+   pointer-events, so clickable cards opt back in. Hover mirrors the
+   primary-btn reaction: light up + lift, paired with the hover SFX. */
+#game-grid .game-card:not(.coming-soon),
+#map-grid .map-card {
+  pointer-events: auto;
+  cursor: pointer;
+  transition: transform 0.12s, filter 0.12s, box-shadow 0.12s;
+}
+
+/* Unavailable mode (e.g. 2v2 without two players per team): greyed, inert,
+   but still shown so players know the mode exists and why it's locked. */
+#map-grid .map-card.disabled {
+  pointer-events: none;
+  cursor: default;
+  filter: grayscale(0.85) brightness(0.7);
+  opacity: 0.55;
+}
+
+#game-grid .game-card:not(.coming-soon):hover,
+#map-grid .map-card:hover {
+  filter: brightness(1.1);
+  transform: translateY(-4px);
+}
+
+/* Signboard cards get a deeper drop when lifted; cover cards carry their
+   shadow on the art itself (drop-shadow), so brightening + lift is enough */
+#game-grid .game-card:not(.coming-soon):not(.has-cover):hover,
+#map-grid .map-card:hover {
+  box-shadow:
+    0 10px 0 rgba(43, 32, 21, 0.55),
+    0 16px 32px rgba(40, 25, 10, 0.45);
+}
