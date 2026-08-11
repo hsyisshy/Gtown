@@ -14,18 +14,18 @@ import { pieceBounds } from './rigid-body.js';
 const INK = '#2a1d19';
 const CREAM = '#fff7df';
 const THEME_IMAGE_SOURCES = {
-  background: './furniture-stack/theme/background.png',
-  platformFlat: './furniture-stack/theme/platform-flat.png',
-  redCharacter: './furniture-stack/theme/characters/red-mover.png',
-  blueCharacter: './furniture-stack/theme/characters/blue-mover.png',
-  redScorePanel: './furniture-stack/theme/ui/red-score-panel.png',
-  blueScorePanel: './furniture-stack/theme/ui/blue-score-panel.png',
-  nextPanel: './furniture-stack/theme/ui/next-panel.png',
-  statusBar: './furniture-stack/theme/ui/status-bar.png',
-  towerOverviewPanel: './furniture-stack/theme/ui/tower-overview-panel.png',
-  victoryPanel: './furniture-stack/theme/ui/victory-panel.png',
-  spinnerWheel: './furniture-stack/theme/spinner/wheel.png',
-  spinnerPointer: './furniture-stack/theme/spinner/pointer.png',
+  background: './05_furniture-stack/theme/background.png',
+  platformFlat: './05_furniture-stack/theme/platform-flat.png',
+  redCharacter: './05_furniture-stack/theme/characters/red-mover.png',
+  blueCharacter: './05_furniture-stack/theme/characters/blue-mover.png',
+  redScorePanel: './05_furniture-stack/theme/ui/red-score-panel.png',
+  blueScorePanel: './05_furniture-stack/theme/ui/blue-score-panel.png',
+  nextPanel: './05_furniture-stack/theme/ui/next-panel.png',
+  statusBar: './05_furniture-stack/theme/ui/status-bar.png',
+  towerOverviewPanel: './05_furniture-stack/theme/ui/tower-overview-panel.png',
+  victoryPanel: './05_furniture-stack/theme/ui/victory-panel.png',
+  spinnerWheel: './05_furniture-stack/theme/spinner/wheel.png',
+  spinnerPointer: './05_furniture-stack/theme/spinner/pointer.png',
 };
 const themeImageCache = new Map();
 

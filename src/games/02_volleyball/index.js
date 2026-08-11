@@ -82,7 +82,7 @@ export default {
   description: '1v1 spike battle',
   color: '#ffe066',
   emoji: '🏐',
-  cover: 'volleyball/volleyball_cover.png',
+  cover: '02_volleyball/volleyball_cover.png',
 
   // Mode picker reuses the map-select screen. 2v2 needs 2 members on BOTH
   // teams; otherwise it renders greyed-out. When 1v1 is the only possibility

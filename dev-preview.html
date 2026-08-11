@@ -12,16 +12,10 @@
     <div id="game-grid"></div>
   </div>
   <script type="module">
-    import { GAMES } from '/src/games/registry.js';
+    import { GAMES, UPCOMING_GAMES } from '/src/games/registry.js';
     import { TOTAL_GAME_SLOTS } from '/src/shared/constants.js';
 
     const gameGridEl = document.getElementById('game-grid');
-
-    const randomCard = document.createElement('div');
-    randomCard.className = 'game-card has-cover random-pick';
-    randomCard.dataset.name = 'random';
-    randomCard.innerHTML = `<img class="game-cover" src="/random_start_cover.png" alt="隨機開始" />`;
-    gameGridEl.appendChild(randomCard);
 
     GAMES.forEach(game => {
       const card = document.createElement('div');
@@ -34,7 +28,18 @@
       gameGridEl.appendChild(card);
     });
 
-    const comingSoonCount = Math.max(0, TOTAL_GAME_SLOTS - GAMES.length - 1);
+    UPCOMING_GAMES.forEach(game => {
+      const card = document.createElement('div');
+      card.className = 'game-card has-cover upcoming';
+      card.dataset.name = game.id;
+      card.innerHTML = `
+        <img class="game-cover" src="${game.cover}" alt="${game.name}" />
+        <span class="upcoming-badge">即將推出</span>
+      `;
+      gameGridEl.appendChild(card);
+    });
+
+    const comingSoonCount = Math.max(0, TOTAL_GAME_SLOTS - GAMES.length - UPCOMING_GAMES.length);
     for (let i = 0; i < comingSoonCount; i++) {
       const card = document.createElement('div');
       card.className = 'game-card coming-soon';

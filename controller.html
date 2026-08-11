@@ -42,8 +42,8 @@
   <!-- Transient toast (e.g. host denied your request) -->
   <div id="ctrl-toast" class="hidden"></div>
 
-  <!-- In-game back-to-lobby (host only, two-tap confirm) -->
-  <button id="ingame-back-btn" class="hidden">↩ 大廳</button>
+  <!-- In-game back-to-game-select (host only, two-tap confirm) -->
+  <button id="ingame-back-btn" class="hidden"> 重選遊戲</button>
 
   <!-- LOBBY: master -->
   <div id="lobby-master" class="hidden">
@@ -74,7 +74,10 @@
     <div id="team-badge-master" class="team-badge"></div>
     <p class="role-tag">HOST — Pick a game</p>
     <div id="game-select-list"></div>
-    <button class="secondary-btn" id="game-select-back-btn">↩ 返回大廳</button>
+    <div class="game-select-actions">
+      <button class="secondary-btn" id="game-select-random-btn">🎲 隨機開始</button>
+      <button class="secondary-btn" id="game-select-back-btn">↩ 重新分隊</button>
+    </div>
   </div>
 
   <!-- GAME SELECT: non-master waits -->
@@ -95,6 +98,48 @@
   <div id="map-select-player" class="hidden">
     <div id="team-badge-mapwait" class="team-badge"></div>
     <p class="hint">房主正在選擇地圖…</p>
+  </div>
+
+  <!-- PREP: reveal + ready check -->
+  <div id="prep-waiting" class="hidden">
+    <div class="team-badge"></div>
+    <p class="hint">🎰 抽籤中…</p>
+  </div>
+
+  <div id="prep-ready-pending" class="hidden">
+    <div class="team-badge"></div>
+    <p class="prep-drawn-text">你被抽中上場！</p>
+    <button class="primary-btn" id="prep-ready-btn">✅ 準備好了</button>
+  </div>
+
+  <div id="prep-ready-done" class="hidden">
+    <div class="team-badge"></div>
+    <p class="hint">已準備，等待其他人…</p>
+    <p id="prep-ready-count" class="hint"></p>
+  </div>
+
+  <div id="prep-watching" class="hidden">
+    <div class="team-badge"></div>
+    <p class="hint">這回合輪空，幫忙加油！</p>
+  </div>
+
+  <!-- PREP: host-only override panel (persistent overlay, same treatment
+       as #ingame-back-btn — shown regardless of which of the 4 views above
+       the host is also seeing as a participant) -->
+  <div id="prep-host-panel" class="hidden">
+    <p class="role-tag">房主控制</p>
+    <div id="prep-roster-list"></div>
+    <button class="primary-btn" id="prep-force-start-btn">⚡ 強制開始</button>
+  </div>
+
+  <!-- TUTORIAL PAGING: persistent badge (same treatment as #ingame-back-btn)
+       shown only to the one drawn player controlling the how-to-play book —
+       layered on top of their normal game controls, whose real A/B buttons
+       flip pages while this is up (see src/controller/main.js). -->
+  <div id="tutorial-controller-badge" class="hidden">
+    <p>📖 你負責翻教學</p>
+    <p id="tutorial-controller-page"></p>
+    <p class="hint">🅰️ 上一頁　🅱️ 下一頁</p>
   </div>
 
   <!-- PLAYING: layout injected dynamically (active players) -->
@@ -122,8 +167,7 @@
   <!-- RESULTS: master -->
   <div id="results-master" class="hidden">
     <p class="role-tag">HOST</p>
-    <button class="primary-btn" id="play-again-btn">PLAY AGAIN</button>
-    <button class="secondary-btn" id="back-to-lobby-btn">LOBBY</button>
+    <button class="primary-btn" id="play-again-btn">重選遊戲</button>
   </div>
 
   <!-- RESULTS: non-master -->

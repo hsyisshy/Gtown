@@ -1,33 +1,27 @@
 import { initGame, updateGame, drawGame, setPlayerInput, cleanupGame } from './game-logic.js';
 import { createLoopingBgm } from '../../shared/loopingBgm.js';
 
-const bgm = createLoopingBgm('hospital/audio/bgm.mp3');
-
-const MAPS = [
-  { name: '第一地圖：開闊病房', description: '無障礙地形，4 隻殭屍，比誰跑得快、閃得準' },
-  { name: '第二地圖：障礙迷宮', description: '三道障礙牆，3 隻殭屍，走位與卡位是勝負關鍵' },
-  { name: '第三地圖：同步平台', description: '兩座往返平台，4 隻殭屍，雙隊搶搭同一條航線' },
-];
+const bgm = createLoopingBgm('01_hospital/audio/bgm.mp3');
 
 export default {
   id: 'hospital',
   name: '狂瘋醫院',
-  description: '2v2 對戰！扛擔架送汙染物，搶先送達 10 個獲勝',
+  description: '2v2 對戰！扛擔架送汙染物，60 秒內比誰送得多',
   color: '#00e87a',
   emoji: '🏥',
-  cover: 'hospital/hospital_cover.png',
+  cover: '01_hospital/hospital_cover.png',
   playersPerTeam: 2,
-  maps: MAPS,
+  // Unlike climb/truck (which fill short teams gracefully), hospital's two
+  // carriers are a rigid stretcher pair — a missing partner leaves half the
+  // stretcher uncontrolled, so both teams must be full before it can start.
+  requireFullTeams: true,
 
   tutorial: {
-    goal: '2v2 對抗——隊友兩人扛起擔架搬運汙染物送到對面，搶先送達 10 個獲勝！',
-    controls: [
-      { key: '🕹️', text: '移動角色' },
-    ],
-    tips: [
-      '小心殭屍！被攻擊會扣血，倒地時汙染物會掉落',
-      '兩位隊友要互相配合走位，擔架才扛得穩',
-      '第三地圖要搭來回移動的平台，抓準時機跳上去',
+    pages: [
+      '01_hospital/tutorial/1.png',
+      '01_hospital/tutorial/2.png',
+      '01_hospital/tutorial/3.png',
+      '01_hospital/tutorial/4.png',
     ],
   },
 

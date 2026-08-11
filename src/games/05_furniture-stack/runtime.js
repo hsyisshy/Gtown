@@ -426,7 +426,7 @@ export default {
   playersPerTeam: 1,
   color: '#ff8d5c',
   emoji: '🎯',
-  cover: 'furniture-stack/theme/cover.png',
+  cover: '05_furniture-stack/theme/furniture_cover.png',
 
   tutorial: {
     goal: '紅藍隊輪流堆家具，誰讓家具掉出平台就輸掉該局，先贏兩局獲勝！',

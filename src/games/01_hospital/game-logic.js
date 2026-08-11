@@ -2,7 +2,7 @@ import { truncateName } from '../../shared/nameDisplay.js';
 
 /* =========================================================================
    狂瘋醫院 2v2 — 紅隊(左→右) vs 藍隊(右→左)，共用殭屍池，同場對沖，
-   搶先送達 10 個汙染物獲勝。
+   60 秒計時賽，時間到送達數量較多的隊伍獲勝。
    ========================================================================= */
 
 /* =========================================================================
@@ -19,19 +19,13 @@ const CONFIG = {
   ZOMBIE_ATTACK_RANGE: 0.95, // units
   ZOMBIE_ATTACK_TELEGRAPH: 0.5, // sec
   ZOMBIE_ATTACK_COOLDOWN: 1.2, // sec
-  ZOMBIE_HIT_DAMAGE: 20,
   ZOMBIE_ATTACK_RETREAT: 1.5, // units knocked back after landing a hit, so it can't camp next to the target
 
   DISTANCE_THRESHOLD_RATIO: 1.5, // max stretch of the rigid stretcher rod
-  DESYNC_GRACE_TIME: 0.5,
-  DROP_TRIGGER_TIME: 1.75,
-  DESYNC_ANGLE_THRESHOLD_DEG: 45,
 
-  STACK_INSTABILITY_MULTIPLIER: { 0: 0, 1: 0.5, 2: 1.0, 3: 1.8, 4: 2.4, 5: 3.5 },
-  SPEED_INSTABILITY_MULTIPLIER: { sprint: 1.5, normal: 1.0, slow: 0.4 },
-  SPEED_SPRINT_RATIO: 0.85,
-  SPEED_SLOW_RATIO: 0.4,
-  TOP_HEAVY_STACK_THRESHOLD: 4,
+  // Carrying more layers slows the whole team down — no desync/drop check,
+  // just a flat speed multiplier keyed by current stack height.
+  STACK_SPEED_MULTIPLIER: { 0: 1.0, 1: 0.92, 2: 0.82, 3: 0.7, 4: 0.56, 5: 0.4 },
 
   MADNESS_DURATION: 5,
   MADNESS_TYPES: ['SLOW_MOVEMENT', 'SLIPPERY'],
@@ -41,15 +35,10 @@ const CONFIG = {
   NORMAL_STOP_TIME: 0.1,
   SLIPPERY_STOP_TIME: [0.4, 0.6],
 
-  PLAYER_MAX_HP: 100,
   PLAYER_HIT_INVULN: 0.6,
 
   STACK_MAX: 5,
   STACK_CHARGE_TIME: 1.0, // sec per layer while in own start zone
-  POLLUTANT_QUOTA: 10,    // first team to deliver this many wins
-
-  PLATFORM_CROSS_TIME: 2.5,
-  PLATFORM_DOCK_PAUSE: 1.2,
 };
 
 const REST_LENGTH = CONFIG.UNIT * 1.0;
@@ -136,7 +125,7 @@ function beep(freq, dur, type, gain) {
   const g = audioCtx.createGain();
   osc.type = type || 'sine';
   osc.frequency.value = freq;
-  g.gain.value = gain != null ? gain : 0.08;
+  g.gain.value = gain != null ? gain : 0.11;
   osc.connect(g);
   g.connect(audioCtx.destination);
   osc.start();
@@ -146,17 +135,16 @@ function beep(freq, dur, type, gain) {
 // mp3 clips for the events that have real recordings; the rest stay as
 // synthesized beeps until matching files exist.
 function sfxClip(file, volume) {
-  const el = new Audio(`hospital/audio/${file}`);
+  const el = new Audio(`01_hospital/audio/${file}`);
   el.preload = 'auto';
   el.volume = volume;
   return el;
 }
 const CLIPS = {
-  hit:     sfxClip('zombie_hit.mp3', 0.6),
-  roar:    sfxClip('zombie_roar.mp3', 0.45),
-  drop:    sfxClip('pollutant_drop.mp3', 0.6),
-  add:     sfxClip('pollutant_add.mp3', 0.5),
-  deliver: sfxClip('pollutant_deliver.mp3', 0.6),
+  hit:     sfxClip('zombie_hit.mp3', 0.84),
+  roar:    sfxClip('zombie_roar.mp3', 0.63),
+  add:     sfxClip('pollutant_add.mp3', 0.7),
+  deliver: sfxClip('pollutant_deliver.mp3', 0.84),
 };
 function playClip(el) {
   if (audioMuted) return;
@@ -167,12 +155,10 @@ function playClip(el) {
 const SFX = {
   hit: () => playClip(CLIPS.hit),
   roar: () => playClip(CLIPS.roar),
-  madness: () => beep(300, 0.35, 'triangle', 0.1),
-  drop: () => playClip(CLIPS.drop),
+  madness: () => beep(300, 0.35, 'triangle', 0.14),
   layerUp: () => playClip(CLIPS.add),
   win: () => { beep(523, 0.15, 'sine'); setTimeout(() => beep(784, 0.25, 'sine'), 140); },
   deliver: () => playClip(CLIPS.deliver),
-  platformFail: () => beep(180, 0.3, 'square', 0.12),
 };
 
 // Ambient zombie roars — pure atmosphere on a random timer, no gameplay tie
@@ -282,9 +268,9 @@ function flipHorizontal(img) {
 }
 
 const CHARACTER_SOURCES = {
-  idle: 'hospital/characters/player_idle.png',
-  walk1: 'hospital/characters/player_walk1.png',
-  walk2: 'hospital/characters/player_walk2.png',
+  idle: '01_hospital/characters/player_idle.png',
+  walk1: '01_hospital/characters/player_walk1.png',
+  walk2: '01_hospital/characters/player_walk2.png',
 };
 const SPRITE_CACHE = { idle: {}, walk1: {}, walk2: {} };
 let spritesReady = false;
@@ -324,9 +310,9 @@ const ZOMBIE_VARIANTS = [
 ];
 
 const ZOMBIE_SOURCES = {
-  idle: 'hospital/zombies/zombie_idle.png',
-  walk1: 'hospital/zombies/zombie_walk1.png',
-  walk2: 'hospital/zombies/zombie_walk2.png',
+  idle: '01_hospital/zombies/zombie_idle.png',
+  walk1: '01_hospital/zombies/zombie_walk1.png',
+  walk2: '01_hospital/zombies/zombie_walk2.png',
 };
 const ZOMBIE_SPRITE_CACHE = { idle: [], walk1: [], walk2: [] };
 let zombieSpritesReady = false;
@@ -353,7 +339,7 @@ let zombieSpritesReady = false;
 /* =========================================================================
    POLLUTANT SPRITE (1 row x 5 columns, frame N shows the stack at N layers)
    ========================================================================= */
-const POLLUTANT_SOURCE = 'hospital/pollutant/pollutant_stack.png';
+const POLLUTANT_SOURCE = '01_hospital/pollutant/pollutant_stack.png';
 const POLLUTANT_DRAW_H = 150;
 let pollutantSprite = null;
 let pollutantFrameW = 0;
@@ -406,7 +392,7 @@ function computeAlphaBBox(imgData, x0, x1, height) {
 /* =========================================================================
    BACKGROUND
    ========================================================================= */
-const BACKGROUND_SOURCE = 'hospital/background.png';
+const BACKGROUND_SOURCE = '01_hospital/background.png';
 let backgroundImg = null;
 (function loadBackground() {
   const img = new Image();
@@ -435,47 +421,12 @@ function rect(x, y, w, h) { return { x, y, w, h }; }
 
 const MAPS = [
   {
-    name: '第一地圖：開闊病房',
-    goal: '無障礙地形，比誰跑得快、閃得準',
-    timeLimit: 180,
+    name: '開闊病房',
+    goal: '無障礙地形，60 秒內盡量多送汙染物，比誰送得多',
+    timeLimit: 60,
     obstacles: [],
     zombieCount: 4,
     zombieSpawns: [ { x: 700, y: 250 }, { x: 1050, y: 750 }, { x: 1350, y: 400 }, { x: 550, y: 850 }, { x: 1550, y: 950 } ],
-    platform: null,
-  },
-  {
-    name: '第二地圖：障礙迷宮',
-    goal: '三道障礙牆，走位與卡位是勝負關鍵',
-    timeLimit: 200,
-    obstacles: [
-      rect(560, 130, 90, 560),
-      rect(940, 460, 90, 620),
-      rect(1320, 130, 90, 560),
-    ],
-    zombieCount: 3,
-    zombieSpawns: [ { x: 480, y: 900 }, { x: 780, y: 300 }, { x: 1140, y: 300 }, { x: 1500, y: 850 } ],
-    platform: null,
-  },
-  {
-    name: '第三地圖：同步平台',
-    goal: '兩座往返平台，雙隊搶搭同一條航線',
-    timeLimit: 240,
-    obstacles: [
-      rect(650, 400, 80, 400),
-    ],
-    zombieCount: 4,
-    // NOTE: last spawn used to be (1750, 550) — inside the right-hand
-    // load/drop zone, which zombies may no longer enter.
-    zombieSpawns: [ { x: 650, y: 300 }, { x: 1500, y: 300 }, { x: 1500, y: 850 }, { x: 650, y: 900 }, { x: 1600, y: 550 } ],
-    platform: {
-      pit: rect(950, PLAY_TOP, 500, PLAY_BOTTOM - PLAY_TOP),
-      startMarker: { x: 870, y: 560 },  // west bank respawn
-      endMarker: { x: 1530, y: 560 },   // east bank respawn
-      rafts: [
-        { dockLeftX: 950, dockRightX: 1120, w: 150, h: 180, y: 400, startAt: 'left' },
-        { dockLeftX: 1130, dockRightX: 1300, w: 150, h: 180, y: 540, startAt: 'right' },
-      ],
-    },
   },
 ];
 
@@ -510,10 +461,8 @@ function makePlayer(pid, spawnPos) {
     pid,
     pos: { x: spawnPos.x, y: spawnPos.y },
     vel: { x: 0, y: 0 },
-    hp: CONFIG.PLAYER_MAX_HP,
     madness: null, // { type, timer }
     invulnTimer: 0,
-    intentAxis: { x: 0, y: 0 },
     slipAngle: 0,
     slipDirTimer: 0,
     facingRight: true,
@@ -538,20 +487,14 @@ function makeTeam(teamKey) {
     players: { A: makePlayer(prefix + 'A', spawnA), B: makePlayer(prefix + 'B', spawnB) },
     stackLayers: 0,
     chargeAccum: 0,
-    desyncTimer: 0,
-    instability: 0,
-    speedState: 'slow',
     delivered: 0,
-    lastBankSide: teamKey === 'red' ? 'left' : 'right',
-    obstacleBumpCooldown: 0,
-    toasts: { drop: 0, dropTarget: '', deliver: 0, deliverText: '', platform: 0 },
+    toasts: { deliver: 0, deliverText: '' },
   };
 }
 
 // Shared world state (not per-team)
 let world = {
   zombies: [],
-  rafts: [],
 };
 
 function currentMap() { return MAPS[game.mapIndex]; }
@@ -559,13 +502,6 @@ function currentMap() { return MAPS[game.mapIndex]; }
 function getPlayer(pid) {
   const team = pid[0] === 'R' ? teams.red : teams.blue;
   return { team, player: team.players[pid[1]] };
-}
-
-function eachPlayer(fn) {
-  for (const pid of ALL_PIDS) {
-    const { team, player } = getPlayer(pid);
-    fn(pid, player, team);
-  }
 }
 
 function spawnZombies(map) {
@@ -599,18 +535,6 @@ function startMatch(mapIndex) {
 
   const map = currentMap();
   world.zombies = spawnZombies(map);
-  world.rafts = [];
-  if (map.platform) {
-    world.rafts = map.platform.rafts.map(cfg => {
-      const startRight = cfg.startAt === 'right';
-      return {
-        x: startRight ? cfg.dockRightX : cfg.dockLeftX,
-        dir: startRight ? -1 : 1,
-        state: 'MOVING',
-        pauseTimer: 0,
-      };
-    });
-  }
   game.timer = map.timeLimit;
   game.state = 'INTRO';
   game.transitionTimer = 3.0;
@@ -629,7 +553,7 @@ function goToGameOver(winner, reason) {
    UPDATE: PLAYER MOVEMENT (per team)
    ========================================================================= */
 function updatePlayerMovement(team, dt) {
-  let anyObstacleBump = false;
+  const stackSpeedMult = CONFIG.STACK_SPEED_MULTIPLIER[team.stackLayers] ?? 1;
   for (const id of ['A', 'B']) {
     const p = team.players[id];
     let axis = getRawAxis(p.pid);
@@ -653,8 +577,7 @@ function updatePlayerMovement(team, dt) {
       axis = { x: Math.cos(p.slipAngle) * mag, y: Math.sin(p.slipAngle) * mag };
     }
 
-    p.intentAxis = axis;
-    const targetVel = { x: axis.x * PLAYER_SPEED_PX, y: axis.y * PLAYER_SPEED_PX };
+    const targetVel = { x: axis.x * PLAYER_SPEED_PX * stackSpeedMult, y: axis.y * PLAYER_SPEED_PX * stackSpeedMult };
     const moving = axis.x !== 0 || axis.y !== 0;
 
     if (moving) {
@@ -675,19 +598,8 @@ function updatePlayerMovement(team, dt) {
     p.pos.y = clamp(p.pos.y, PLAY_TOP + CHAR_RADIUS, PLAY_BOTTOM - CHAR_RADIUS);
 
     for (const ob of currentMap().obstacles) {
-      const beforeX = p.pos.x, beforeY = p.pos.y;
       circleRectPushOut(p.pos, CHAR_RADIUS, ob);
-      if (p.pos.x !== beforeX || p.pos.y !== beforeY) anyObstacleBump = true;
     }
-  }
-
-  team.obstacleBumpCooldown = Math.max(0, team.obstacleBumpCooldown - dt);
-  if (anyObstacleBump && team.obstacleBumpCooldown <= 0 && team.stackLayers > 0) {
-    team.stackLayers -= 1;
-    team.obstacleBumpCooldown = 1.0;
-    SFX.drop();
-    team.toasts.drop = 2.2;
-    team.toasts.dropTarget = 'OBSTACLE';
   }
 }
 
@@ -741,77 +653,6 @@ function updateStretcherRod(team) {
     a.x -= nx * push; a.y -= ny * push;
     b.x += nx * push; b.y += ny * push;
   }
-}
-
-/* =========================================================================
-   UPDATE: WOBBLE / INSTABILITY (per team)
-   ========================================================================= */
-function directionAngleDeg(v) {
-  return Math.atan2(v.y, v.x) * 180 / Math.PI;
-}
-
-function angleDiffDeg(a1, a2) {
-  let diff = Math.abs(a1 - a2) % 360;
-  if (diff > 180) diff = 360 - diff;
-  return diff;
-}
-
-function updateWobble(team, dt) {
-  const axisA = team.players.A.intentAxis;
-  const axisB = team.players.B.intentAxis;
-  const movingA = vecLen(axisA) > 0.05;
-  const movingB = vecLen(axisB) > 0.05;
-
-  let desynced;
-  if (!movingA && !movingB) {
-    desynced = false;
-  } else if (movingA !== movingB) {
-    desynced = true;
-  } else {
-    const angleDiff = angleDiffDeg(directionAngleDeg(axisA), directionAngleDeg(axisB));
-    desynced = angleDiff > CONFIG.DESYNC_ANGLE_THRESHOLD_DEG;
-  }
-
-  if (desynced) team.desyncTimer += dt;
-  else team.desyncTimer = Math.max(0, team.desyncTimer - dt);
-
-  const vAvg = {
-    x: (team.players.A.vel.x + team.players.B.vel.x) / 2,
-    y: (team.players.A.vel.y + team.players.B.vel.y) / 2,
-  };
-  const speedRatio = vecLen(vAvg) / PLAYER_SPEED_PX;
-  if (speedRatio >= CONFIG.SPEED_SPRINT_RATIO) team.speedState = 'sprint';
-  else if (speedRatio >= CONFIG.SPEED_SLOW_RATIO) team.speedState = 'normal';
-  else team.speedState = 'slow';
-
-  const topHeavy = team.stackLayers >= CONFIG.TOP_HEAVY_STACK_THRESHOLD && team.speedState === 'sprint';
-
-  if (team.desyncTimer > CONFIG.DESYNC_GRACE_TIME || topHeavy) {
-    const stackMult = CONFIG.STACK_INSTABILITY_MULTIPLIER[team.stackLayers] || 0;
-    const speedMult = CONFIG.SPEED_INSTABILITY_MULTIPLIER[team.speedState];
-    team.instability += dt * stackMult * speedMult;
-  } else {
-    team.instability = Math.max(0, team.instability - dt);
-  }
-
-  if (team.instability >= CONFIG.DROP_TRIGGER_TIME && team.stackLayers > 0) {
-    triggerDrop(team);
-  }
-}
-
-function triggerDrop(team) {
-  // Cargo tips toward whichever carrier is lagging behind along the team's
-  // travel direction. Only one layer topples at a time.
-  const aLead = (team.players.A.vel.x - team.players.B.vel.x) * team.dir >= 0;
-  const hitTarget = aLead ? 'B' : 'A';
-  team.stackLayers = Math.max(0, team.stackLayers - 1);
-  team.instability = 0;
-  team.desyncTimer = 0;
-  triggerMadness(team.players[hitTarget].pid);
-  SFX.drop();
-  team.toasts.platform = 0;
-  team.toasts.drop = 2.2;
-  team.toasts.dropTarget = hitTarget;
 }
 
 /* =========================================================================
@@ -915,11 +756,6 @@ function pickZombieTarget(z) {
 function updateZombies(dt) {
   const map = currentMap();
   for (const z of world.zombies) {
-    if (map.platform && rectContains(map.platform.pit, z.pos)) {
-      // zombies never occupy the platform gap
-      z.pos.x = clamp(z.pos.x, PLAY_LEFT + 40, map.platform.pit.x - 40);
-    }
-
     for (const ob of map.obstacles) {
       circleRectPushOut(z.pos, CHAR_RADIUS * 0.95, ob);
     }
@@ -945,7 +781,6 @@ function updateZombies(dt) {
         dist(getPlayer(pid).player.pos, next) < CHAR_RADIUS * 1.8);
       const blocked = bumpedPlayer ||
         map.obstacles.some(ob => rectContains(ob, next)) ||
-        (map.platform && rectContains(map.platform.pit, next)) ||
         rectContains(ZONE_LEFT, next) || rectContains(ZONE_RIGHT, next);
       const outOfBounds =
         nextX < PLAY_LEFT + 40 || nextX > PLAY_RIGHT - 40 ||
@@ -1017,7 +852,6 @@ function resolveZombieAttack(z) {
   const d = Math.hypot(dx, dy) || 1;
   const nx = dx / d, ny = dy / d;
 
-  p.hp = Math.max(0, p.hp - CONFIG.ZOMBIE_HIT_DAMAGE);
   // Always retreat after landing a hit so it doesn't just sit there and
   // re-attack the instant invulnerability/cooldown wears off.
   z.pos.x -= nx * CONFIG.ZOMBIE_ATTACK_RETREAT * CONFIG.UNIT;
@@ -1035,106 +869,22 @@ function resolveZombieAttack(z) {
 }
 
 /* =========================================================================
-   UPDATE: PLATFORM (map 3) — shared rafts carry anyone standing on them
-   ========================================================================= */
-function raftRectAt(cfg, x) { return rect(x, cfg.y, cfg.w, cfg.h); }
-
-function anyRaftContains(pf, pos) {
-  return pf.rafts.some((cfg, i) => rectContains(raftRectAt(cfg, world.rafts[i].x), pos));
-}
-
-function updatePlatform(dt) {
-  const map = currentMap();
-  if (!map.platform) return;
-  const pf = map.platform;
-
-  // Track each team's last solid bank so a fall sends them back to whichever
-  // side they were actually crossing FROM.
-  for (const teamKey of ['red', 'blue']) {
-    const team = teams[teamKey];
-    const mid = teamMidpoint(team);
-    if (mid.x < pf.pit.x) team.lastBankSide = 'left';
-    else if (mid.x > pf.pit.x + pf.pit.w) team.lastBankSide = 'right';
-  }
-
-  pf.rafts.forEach((cfg, i) => {
-    const raft = world.rafts[i];
-    const prevX = raft.x;
-
-    if (raft.state === 'PAUSED') {
-      raft.pauseTimer -= dt;
-      if (raft.pauseTimer <= 0) raft.state = 'MOVING';
-    } else {
-      const span = cfg.dockRightX - cfg.dockLeftX;
-      const speed = span / CONFIG.PLATFORM_CROSS_TIME;
-      raft.x += raft.dir * speed * dt;
-      if (raft.dir > 0 && raft.x >= cfg.dockRightX) {
-        raft.x = cfg.dockRightX; raft.dir = -1; raft.state = 'PAUSED'; raft.pauseTimer = CONFIG.PLATFORM_DOCK_PAUSE;
-      } else if (raft.dir < 0 && raft.x <= cfg.dockLeftX) {
-        raft.x = cfg.dockLeftX; raft.dir = 1; raft.state = 'PAUSED'; raft.pauseTimer = CONFIG.PLATFORM_DOCK_PAUSE;
-      }
-    }
-
-    const deltaX = raft.x - prevX;
-    if (deltaX !== 0) {
-      const r = raftRectAt(cfg, raft.x);
-      eachPlayer((pid, p) => {
-        if (rectContains(r, p.pos)) p.pos.x += deltaX;
-      });
-    }
-  });
-
-  for (const teamKey of ['red', 'blue']) {
-    checkPlatformFall(pf, teams[teamKey]);
-  }
-}
-
-function checkPlatformFall(pf, team) {
-  const aInPit = rectContains(pf.pit, team.players.A.pos) && !anyRaftContains(pf, team.players.A.pos);
-  const bInPit = rectContains(pf.pit, team.players.B.pos) && !anyRaftContains(pf, team.players.B.pos);
-  if (aInPit || bInPit) {
-    const marker = team.lastBankSide === 'right' ? pf.endMarker : pf.startMarker;
-    team.players.A.pos.x = marker.x + team.dir * REST_LENGTH / 2; team.players.A.pos.y = marker.y;
-    team.players.B.pos.x = marker.x - team.dir * REST_LENGTH / 2; team.players.B.pos.y = marker.y;
-    team.players.A.vel = { x: 0, y: 0 };
-    team.players.B.vel = { x: 0, y: 0 };
-    team.toasts.platform = 2.2;
-    SFX.platformFail();
-    return true;
-  }
-  return false;
-}
-
-/* =========================================================================
    UPDATE: DELIVERY / WIN / LOSE
    ========================================================================= */
 function updateDelivery(team) {
   const mid = teamMidpoint(team);
   if (rectContains(team.dropZone, mid) && team.stackLayers > 0) {
     const delivering = team.stackLayers;
-    team.delivered = Math.min(CONFIG.POLLUTANT_QUOTA, team.delivered + delivering);
+    team.delivered += delivering;
     team.stackLayers = 0;
     team.chargeAccum = 0;
     SFX.deliver();
     team.toasts.deliver = 1.6;
-    team.toasts.deliverText = `${TEAM_LABEL[team.key]} 送達 ${delivering} 個！累計 ${team.delivered}/${CONFIG.POLLUTANT_QUOTA}`;
-    if (team.delivered >= CONFIG.POLLUTANT_QUOTA) {
-      goToGameOver(team.key, `${TEAM_LABEL[team.key]} 率先送達 ${CONFIG.POLLUTANT_QUOTA} 個汙染物！`);
-    }
+    team.toasts.deliverText = `${TEAM_LABEL[team.key]} 送達 ${delivering} 個！累計 ${team.delivered}`;
   }
 }
 
 function checkWinLose(dt) {
-  // A team loses if either of its carriers hits 0 HP
-  for (const teamKey of ['red', 'blue']) {
-    const team = teams[teamKey];
-    if (team.players.A.hp <= 0 || team.players.B.hp <= 0) {
-      const other = teamKey === 'red' ? 'blue' : 'red';
-      goToGameOver(other, `${TEAM_LABEL[teamKey]} 隊員血量歸零`);
-      return;
-    }
-  }
-
   game.timer -= dt;
   if (game.timer <= 0) {
     game.timer = 0;
@@ -1147,8 +897,6 @@ function checkWinLose(dt) {
 
   for (const teamKey of ['red', 'blue']) {
     const t = teams[teamKey].toasts;
-    if (t.drop > 0) t.drop -= dt;
-    if (t.platform > 0) t.platform -= dt;
     if (t.deliver > 0) t.deliver -= dt;
   }
 }
@@ -1173,13 +921,11 @@ function update(dt) {
       updatePlayerMovement(team, dt);
       updateCharacterAnimation(team, dt);
       updateStretcherRod(team);
-      updateWobble(team, dt);
       updateStackCharging(team, dt);
       updateMadness(team, dt);
     }
     resolveCrossTeamCollisions();
     updateZombies(dt);
-    updatePlatform(dt);
     for (const teamKey of ['red', 'blue']) updateDelivery(teams[teamKey]);
     checkWinLose(dt);
     return;
@@ -1231,34 +977,6 @@ function drawObstacles() {
     ctx.fillText('障礙物', 0, 0);
     ctx.restore();
   }
-}
-
-function drawPlatform() {
-  const map = currentMap();
-  if (!map.platform) return;
-  const pf = map.platform;
-  ctx.fillStyle = '#0d1b2a';
-  ctx.fillRect(pf.pit.x, pf.pit.y, pf.pit.w, pf.pit.h);
-  ctx.strokeStyle = '#e63946';
-  ctx.lineWidth = 3;
-  for (let y = pf.pit.y; y < pf.pit.y + pf.pit.h; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(pf.pit.x, y);
-    ctx.lineTo(pf.pit.x + 20, y + 20);
-    ctx.stroke();
-  }
-  pf.rafts.forEach((cfg, i) => {
-    const raft = world.rafts[i];
-    ctx.fillStyle = '#a9744f';
-    ctx.fillRect(raft.x, cfg.y, cfg.w, cfg.h);
-    ctx.strokeStyle = '#6b4a2f';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(raft.x, cfg.y, cfg.w, cfg.h);
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`平台${i + 1}`, raft.x + cfg.w / 2, cfg.y + cfg.h / 2);
-  });
 }
 
 function drawZombies() {
@@ -1340,18 +1058,6 @@ function drawStretcher(team) {
 
   const labelTopY = midY - POLLUTANT_DRAW_H - 10;
 
-  if (team.instability > 0) {
-    const ratio = clamp(team.instability / CONFIG.DROP_TRIGGER_TIME, 0, 1);
-    const barW = 90;
-    ctx.fillStyle = 'rgba(0,0,0,0.5)';
-    ctx.fillRect(midX - barW / 2, labelTopY - 12, barW, 12);
-    ctx.fillStyle = ratio > 0.7 ? '#ff3b3b' : '#ffcc33';
-    ctx.fillRect(midX - barW / 2, labelTopY - 12, barW * ratio, 12);
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(midX - barW / 2, labelTopY - 12, barW, 12);
-  }
-
   ctx.fillStyle = TEAM_TINT[team.key];
   ctx.font = 'bold 15px sans-serif';
   ctx.textAlign = 'center';
@@ -1419,17 +1125,9 @@ function drawToasts() {
     const y = slots[teamKey];
     let msg = null, color = '#fff';
 
-    if (t.drop > 0) {
-      msg = t.dropTarget === 'OBSTACLE'
-        ? `${TEAM_LABEL[teamKey]} 撞到障礙物，汙染物掉了一個！`
-        : `${TEAM_LABEL[teamKey]} 汙染物掉落，砸中了 ${displayName(team.players[t.dropTarget].pid)}！`;
-      color = '#ff5555';
-    } else if (t.deliver > 0) {
+    if (t.deliver > 0) {
       msg = t.deliverText;
       color = '#7fffb0';
-    } else if (t.platform > 0) {
-      msg = `${TEAM_LABEL[teamKey]} 未同步站上平台！已傳送回岸邊`;
-      color = '#ffcc33';
     }
 
     if (msg) {
@@ -1468,7 +1166,6 @@ function drawWorld() {
   ctx.fillText('←', ZONE_LEFT.x + ZONE_LEFT.w + 40, ZONE_LEFT.y + ZONE_LEFT.h - 100);
 
   drawObstacles();
-  drawPlatform();
   drawZombies();
 
   // Draw stretchers first, then all characters sorted by y for correct overlap
@@ -1484,13 +1181,6 @@ function drawWorld() {
 /* ---- "hospital biohazard alert system" HUD styling helpers ---- */
 const MONO_FONT_STACK = "'Share Tech Mono', 'Orbitron', monospace";
 
-const HUD_ACCENT = {
-  RA: { border: '#7a1f1f', gradTop: '#ff5f5f', gradBottom: '#8a1414', icon: '♥' },
-  RB: { border: '#8a4a12', gradTop: '#ffb35f', gradBottom: '#8a4a12', icon: '♥' },
-  BA: { border: '#1f3f7a', gradTop: '#5f9fff', gradBottom: '#14418a', icon: '♥' },
-  BB: { border: '#4a1f7a', gradTop: '#b35fff', gradBottom: '#4a148a', icon: '♥' },
-};
-
 function chamferedRectPath(x, y, w, h, cut) {
   ctx.beginPath();
   ctx.moveTo(x + cut, y);
@@ -1502,54 +1192,6 @@ function chamferedRectPath(x, y, w, h, cut) {
   ctx.lineTo(x, y + h - cut);
   ctx.lineTo(x, y + cut);
   ctx.closePath();
-}
-
-function drawHpBar(x, y, w, h, hp, label, madness, pid) {
-  const accent = HUD_ACCENT[pid];
-  const cut = 7;
-  const ratio = clamp(hp / CONFIG.PLAYER_MAX_HP, 0, 1);
-
-  chamferedRectPath(x, y, w, h, cut);
-  ctx.fillStyle = 'rgba(10,15,10,0.75)';
-  ctx.fill();
-
-  if (ratio > 0) {
-    ctx.save();
-    chamferedRectPath(x, y, w, h, cut);
-    ctx.clip();
-    const grad = ctx.createLinearGradient(x, y, x, y + h);
-    grad.addColorStop(0, accent.gradTop);
-    grad.addColorStop(1, accent.gradBottom);
-    ctx.fillStyle = grad;
-    ctx.fillRect(x, y, w * ratio, h);
-    ctx.restore();
-  }
-
-  chamferedRectPath(x, y, w, h, cut);
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = '#2a2a2a';
-  ctx.stroke();
-  chamferedRectPath(x + 2, y + 2, w - 4, h - 4, Math.max(1, cut - 2));
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = accent.border;
-  ctx.stroke();
-
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText(`${accent.icon} ${label}  ${Math.ceil(hp)}`, x, y - 6);
-
-  if (madness) {
-    const info = MADNESS_ICON[madness.type];
-    ctx.fillStyle = info.color;
-    ctx.fillRect(x, y + h + 6, 118, 26);
-    ctx.strokeStyle = '#fff';
-    ctx.strokeRect(x, y + h + 6, 118, 26);
-    ctx.fillStyle = '#111';
-    ctx.font = 'bold 14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${info.icon} ${info.label} ${madness.timer.toFixed(1)}s`, x + 59, y + h + 24);
-  }
 }
 
 function octagonPath(cx, cy, r) {
@@ -1606,22 +1248,16 @@ function drawHUD() {
   ctx.fillStyle = 'rgba(10,10,14,0.85)';
   ctx.fillRect(0, 0, 1920, PLAY_TOP);
 
-  // Red pair on the left, blue pair on the right
-  drawHpBar(40, 30, 200, 24, teams.red.players.A.hp, PLAYER_LABEL.RA, teams.red.players.A.madness, 'RA');
-  drawHpBar(270, 30, 200, 24, teams.red.players.B.hp, PLAYER_LABEL.RB, teams.red.players.B.madness, 'RB');
-  drawHpBar(1920 - 470, 30, 200, 24, teams.blue.players.A.hp, PLAYER_LABEL.BA, teams.blue.players.A.madness, 'BA');
-  drawHpBar(1920 - 240, 30, 200, 24, teams.blue.players.B.hp, PLAYER_LABEL.BB, teams.blue.players.B.madness, 'BB');
-
   drawCountdownTimer();
 
   // Delivered scores flanking the timer
   ctx.font = 'bold 26px sans-serif';
   ctx.textAlign = 'right';
   ctx.fillStyle = TEAM_TINT.red;
-  ctx.fillText(`🔴 ${teams.red.delivered}/${CONFIG.POLLUTANT_QUOTA}`, 880, 58);
+  ctx.fillText(`🔴 ${teams.red.delivered}`, 880, 58);
   ctx.textAlign = 'left';
   ctx.fillStyle = TEAM_TINT.blue;
-  ctx.fillText(`${teams.blue.delivered}/${CONFIG.POLLUTANT_QUOTA} 🔵`, 1040, 58);
+  ctx.fillText(`${teams.blue.delivered} 🔵`, 1040, 58);
 
   ctx.textAlign = 'center';
   ctx.font = 'bold 16px sans-serif';
@@ -1722,7 +1358,7 @@ function render() {
     drawOverlay(map.name, [
       map.goal,
       `🔴 紅隊 左→右　vs　🔵 藍隊 右→左`,
-      `搶先送達 ${CONFIG.POLLUTANT_QUOTA} 個汙染物獲勝！限時 ${map.timeLimit} 秒`,
+      `限時 ${map.timeLimit} 秒，時間到比送達數量！`,
     ], '即將開始...', true);
   } else if (game.state === 'GAME_OVER') {
     if (game.winner) {
@@ -1776,7 +1412,6 @@ export function setPlayerInput(deviceId, data) {
 export function cleanupGame() {
   teams = null;
   world.zombies = [];
-  world.rafts = [];
   _endCallback = null;
   _playerMap = {};
   _playerNames = {};

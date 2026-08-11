@@ -1,5 +1,5 @@
 /**
- * 太空上樓 — 3v3 vertical climbing race ported from climb/index.html
+ * 爬高派對 — 3v3 vertical climbing race ported from climb/index.html
  *
  * Red vs blue, 3 per team (playersPerTeam: 3); short teams are filled with
  * AI climbers so both sides always field 3. The camera force-scrolls upward
@@ -74,13 +74,13 @@ function loadImage(path) {
 }
 for (const key of SPRITE_KEYS) {
   SPRITE_IMAGES[key] = {
-    stand: loadImage(`climb/${key}/${key}_stand.png`),
-    jump: loadImage(`climb/${key}/${key}_jump.png`),
+    stand: loadImage(`06_climb/${key}/${key}_stand.png`),
+    jump: loadImage(`06_climb/${key}/${key}_jump.png`),
     walk: Array.from({ length: 11 }, (_, i) =>
-      loadImage(`climb/${key}/${key}_walk${String(i + 1).padStart(2, '0')}.png`)),
+      loadImage(`06_climb/${key}/${key}_walk${String(i + 1).padStart(2, '0')}.png`)),
   };
 }
-const backgroundImg = loadImage('climb/climb_background.png');
+const backgroundImg = loadImage('06_climb/climb_background.png');
 const BG_PARALLAX = 0.35; // 背景捲動只有鏡頭的 35%,製造星空縱深感
 
 // --- 平台區塊模板 (手寫座標,不做真程序生成) --------------------------------
@@ -1027,15 +1027,15 @@ function drawUI(ctx) {
 
 export default {
   id: 'climb',
-  name: '太空上樓',
+  name: '爬高派對',
   description: '3v3 往上爬，別被毒霧吞沒',
   playersPerTeam: 3,
   color: '#8f7ee0',
   emoji: '🧗',
-  cover: 'climb/climb_cover.png',
+  cover: '06_climb/climb_cover.png',
 
   tutorial: {
-    comic: 'climb/climb_intro.png',
+    comic: '06_climb/climb_intro.png',
     goal: '3v3 往上爬！鏡頭會不斷上升，掉出畫面下方就被毒霧吞掉。淘汰對方全隊，或撐到時間結束時死得比對方少、爬得比對方高！',
     controls: [
       { key: '⬅➡', text: '左右移動' },

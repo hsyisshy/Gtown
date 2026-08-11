@@ -3,7 +3,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "sofa",
     "label": "紅色雙人沙發",
-    "imageSrc": "./furniture-stack/objects/sofa.png",
+    "imageSrc": "./05_furniture-stack/objects/sofa.png",
     "width": 190,
     "height": 149,
     "colliders": [
@@ -348,7 +348,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "bookcase",
     "label": "藍色高櫃",
-    "imageSrc": "./furniture-stack/objects/bookcase.png",
+    "imageSrc": "./05_furniture-stack/objects/bookcase.png",
     "width": 93,
     "height": 190,
     "colliders": [
@@ -543,7 +543,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "armchair",
     "label": "青綠扶手椅",
-    "imageSrc": "./furniture-stack/objects/armchair.png",
+    "imageSrc": "./05_furniture-stack/objects/armchair.png",
     "width": 135,
     "height": 178,
     "colliders": [
@@ -864,7 +864,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "round-table",
     "label": "黃木圓桌",
-    "imageSrc": "./furniture-stack/objects/round-table.png",
+    "imageSrc": "./05_furniture-stack/objects/round-table.png",
     "width": 178,
     "height": 175,
     "colliders": [
@@ -1317,7 +1317,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "a-frame-sign",
     "label": "木製 A 字招牌",
-    "imageSrc": "./furniture-stack/objects/a-frame-sign.png",
+    "imageSrc": "./05_furniture-stack/objects/a-frame-sign.png",
     "width": 135,
     "height": 160,
     "colliders": [
@@ -1638,7 +1638,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "floor-lamp",
     "label": "彎桿落地燈",
-    "imageSrc": "./furniture-stack/objects/floor-lamp.png",
+    "imageSrc": "./05_furniture-stack/objects/floor-lamp.png",
     "width": 96,
     "height": 186,
     "colliders": [
@@ -2193,7 +2193,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "produce-crate",
     "label": "蔬果木箱",
-    "imageSrc": "./furniture-stack/objects/produce-crate.png",
+    "imageSrc": "./05_furniture-stack/objects/produce-crate.png",
     "width": 164,
     "height": 153,
     "colliders": [
@@ -2538,7 +2538,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "chaise-lounge",
     "label": "紫色貴妃椅",
-    "imageSrc": "./furniture-stack/objects/chaise-lounge.png",
+    "imageSrc": "./05_furniture-stack/objects/chaise-lounge.png",
     "width": 190,
     "height": 144,
     "colliders": [
@@ -2943,7 +2943,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "park-bench",
     "label": "綠木公園長椅",
-    "imageSrc": "./furniture-stack/objects/park-bench.png",
+    "imageSrc": "./05_furniture-stack/objects/park-bench.png",
     "width": 192,
     "height": 158,
     "colliders": [
@@ -3636,7 +3636,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "grandfather-clock",
     "label": "藍色老式落地鐘",
-    "imageSrc": "./furniture-stack/objects/grandfather-clock.png",
+    "imageSrc": "./05_furniture-stack/objects/grandfather-clock.png",
     "width": 74,
     "height": 192,
     "colliders": [
@@ -3825,7 +3825,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "wheelbarrow",
     "label": "紅色獨輪車",
-    "imageSrc": "./furniture-stack/objects/wheelbarrow.png",
+    "imageSrc": "./05_furniture-stack/objects/wheelbarrow.png",
     "width": 188,
     "height": 141,
     "colliders": [
@@ -4428,7 +4428,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "rocking-chair",
     "label": "黃木搖椅",
-    "imageSrc": "./furniture-stack/objects/rocking-chair.png",
+    "imageSrc": "./05_furniture-stack/objects/rocking-chair.png",
     "width": 125,
     "height": 180,
     "colliders": [
@@ -5145,7 +5145,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "coat-rack",
     "label": "青綠衣帽架",
-    "imageSrc": "./furniture-stack/objects/coat-rack.png",
+    "imageSrc": "./05_furniture-stack/objects/coat-rack.png",
     "width": 73,
     "height": 188,
     "colliders": [
@@ -5604,7 +5604,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "upright-piano",
     "label": "深藍直立鋼琴",
-    "imageSrc": "./furniture-stack/objects/upright-piano.png",
+    "imageSrc": "./05_furniture-stack/objects/upright-piano.png",
     "width": 165,
     "height": 188,
     "colliders": [
@@ -5937,7 +5937,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "clawfoot-tub",
     "label": "橘色爪腳浴缸",
-    "imageSrc": "./furniture-stack/objects/clawfoot-tub.png",
+    "imageSrc": "./05_furniture-stack/objects/clawfoot-tub.png",
     "width": 188,
     "height": 155,
     "colliders": [
@@ -6348,7 +6348,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "serving-trolley",
     "label": "薄荷綠雙層推車",
-    "imageSrc": "./furniture-stack/objects/serving-trolley.png",
+    "imageSrc": "./05_furniture-stack/objects/serving-trolley.png",
     "width": 144,
     "height": 176,
     "colliders": [
@@ -6915,7 +6915,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "travel-suitcase",
     "label": "紅色手提箱",
-    "imageSrc": "./furniture-stack/objects/travel-suitcase.png",
+    "imageSrc": "./05_furniture-stack/objects/travel-suitcase.png",
     "width": 129,
     "height": 154,
     "colliders": [
@@ -7200,7 +7200,7 @@ export const STACKING_OBJECTS = [
   {
     "id": "market-cart",
     "label": "青綠黃市集攤車",
-    "imageSrc": "./furniture-stack/objects/market-cart.png",
+    "imageSrc": "./05_furniture-stack/objects/market-cart.png",
     "width": 155,
     "height": 190,
     "colliders": [

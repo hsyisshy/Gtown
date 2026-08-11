@@ -8,7 +8,7 @@
 import { truncateName } from '../../shared/nameDisplay.js';
 import { createLoopingBgm } from '../../shared/loopingBgm.js';
 
-const bgm = createLoopingBgm('pong/pong_bgm.mp3');
+const bgm = createLoopingBgm('03_pong/pong_bgm.mp3');
 
 const WIN_SCORE = 4;
 const BALL_SPEED_INIT = 50;  // logical units / sec
@@ -20,7 +20,7 @@ const BALL_SPEED_MAX  = 220; // cap at 4.4x — still reactable, just a lot more
 const PADDLE_HIT_DEPTH = 3;
 
 const bgImg = new Image();
-bgImg.src = 'pong/pong_bg.png';
+bgImg.src = '03_pong/pong_bg.png';
 
 // --- Power-ups -------------------------------------------------------------
 // Spawn between the paddles; whoever last hit the ball claims the pickup when
@@ -133,7 +133,7 @@ export default {
   playersPerTeam: 1,
   color: '#00cfff',
   emoji: '🏓',
-  cover: 'pong/pong_cover.png',
+  cover: '03_pong/pong_cover.png',
 
   tutorial: {
     goal: '用板子把球擋回去，球穿過對手底線就得分，先拿下 4 分獲勝！',

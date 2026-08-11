@@ -17,7 +17,7 @@
   <!-- OPENING VIDEO: one-time splash, dismissed by the button, then never shown again -->
   <div id="view-intro">
     <video id="intro-video" src="Game_opening.mp4" playsinline></video>
-    <button id="intro-replay-btn">↻ 重播</button>
+    <button id="intro-replay-btn">重播</button>
     <button id="intro-start-btn" class="primary-btn">開始遊戲</button>
   </div>
 
@@ -45,6 +45,7 @@
       <div id="game-select-scores" class="cumulative-scores"></div>
       <p class="subtitle" id="game-select-subtitle">Host is picking…</p>
       <div id="game-grid"></div>
+      <button id="random-pick-btn" class="primary-btn">🎲 隨機開始</button>
     </div>
 
     <!-- MAP SELECT -->
@@ -52,6 +53,24 @@
       <h2 id="map-select-game-title"></h2>
       <p class="subtitle">房主選擇地圖中…</p>
       <div id="map-grid"></div>
+    </div>
+
+    <!-- PREP: reveal each team's picks, then wait for everyone drawn to
+         tap 準備 before the match actually begins -->
+    <div id="view-prep" class="hidden">
+      <h2>賽前準備</h2>
+      <div id="prep-teams">
+        <div class="prep-team-box team-red">
+          <div class="prep-team-header">🔴 紅隊</div>
+          <div class="prep-reels" id="prep-reels-red"></div>
+        </div>
+        <div class="prep-team-box team-blue">
+          <div class="prep-team-header">🔵 藍隊</div>
+          <div class="prep-reels" id="prep-reels-blue"></div>
+        </div>
+      </div>
+      <div id="prep-roster"></div>
+      <p id="prep-countdown" class="hidden"></p>
     </div>
 
     <!-- RESULTS -->
@@ -64,25 +83,43 @@
   </div>
 
   <!-- TUTORIAL: shown when a game starts — gameplay holds until it's
-       dismissed (mouse skip or auto-countdown) -->
+       dismissed. Two mutually-exclusive layouts inside the same panel:
+       #tutorial-classic (text goal/controls/tips, or one comic image, with
+       a click-to-start button + auto-start countdown) is the original
+       format most games still use; #tutorial-paged (a flip-through
+       how-to-play picture book, driven by controller A/B) is the newer
+       format for games with a tutorial.pages array. -->
   <div id="tutorial-overlay" class="hidden">
     <div id="tutorial-panel">
       <h2 id="tutorial-title"></h2>
-      <img id="tutorial-comic" class="hidden" alt="" />
-      <div class="tut-section">
-        <div class="tut-heading">🏆 目標</div>
-        <p id="tutorial-goal"></p>
+
+      <div id="tutorial-classic">
+        <img id="tutorial-comic" class="hidden" alt="" />
+        <div class="tut-section">
+          <div class="tut-heading">🏆 目標</div>
+          <p id="tutorial-goal"></p>
+        </div>
+        <div class="tut-section">
+          <div class="tut-heading">🎮 操作</div>
+          <div id="tutorial-controls"></div>
+        </div>
+        <div class="tut-section" id="tutorial-tips-section">
+          <div class="tut-heading">💡 小撇步</div>
+          <div id="tutorial-tips"></div>
+        </div>
+        <button class="primary-btn" id="tutorial-start-btn">開始！</button>
+        <p id="tutorial-countdown"></p>
       </div>
-      <div class="tut-section">
-        <div class="tut-heading">🎮 操作</div>
-        <div id="tutorial-controls"></div>
+
+      <div id="tutorial-paged" class="hidden">
+        <div id="tutorial-page-viewport">
+          <button id="tutorial-page-prev" class="tutorial-page-zone" aria-label="上一頁"></button>
+          <img id="tutorial-page-img" alt="教學圖說" />
+          <button id="tutorial-page-next" class="tutorial-page-zone" aria-label="下一頁"></button>
+        </div>
+        <p id="tutorial-page-counter"></p>
+        <p class="tutorial-page-hint">🅱️ 下一頁　🅰️ 上一頁</p>
       </div>
-      <div class="tut-section" id="tutorial-tips-section">
-        <div class="tut-heading">💡 小撇步</div>
-        <div id="tutorial-tips"></div>
-      </div>
-      <button class="primary-btn" id="tutorial-start-btn">開始！</button>
-      <p id="tutorial-countdown"></p>
     </div>
   </div>
 

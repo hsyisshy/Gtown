@@ -1,8 +1,8 @@
 import './style.css';
 import { StateMachine } from '../shared/state-machine.js';
 import { cappedDt } from '../shared/airconsole-wrapper.js';
-import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS } from '../shared/constants.js';
-import { GAMES, getGame, getGameList } from '../games/registry.js';
+import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_PAGE_AUTO_MS } from '../shared/constants.js';
+import { GAMES, UPCOMING_GAMES, getGame, getGameList } from '../games/registry.js';
 import { fillMissingTeams, toggleTeam, teamCounts } from '../shared/teams.js';
 
 // ---------------------------------------------------------------------------
@@ -18,7 +18,9 @@ const state = {
   teams: {},             // { [deviceId]: 'red' | 'blue' }
   teamScores: { red: 0, blue: 0 },  // cumulative wins across all rounds
   playerPlayCounts: {},  // { [deviceId]: number } — for weighted draw
-  activePlayers: {},     // { [deviceId]: 'playing' | 'watching' }
+  activePlayers: {},     // { [deviceId]: 'playing' | 'watching' } — populated once PREP's reveal lands
+  prepReady: {},         // { [deviceId]: true } — drawn players who've tapped 準備 this round
+  prepUnlocked: false,   // host override (強制開始/重抽) unlocked after PREP_READY_TIMEOUT_MS with stragglers
   selectedMap: null,     // number | null
   activeMaps: null,      // maps/modes currently on the picker (may carry .enabled)
   lastWinner: null,      // 'red' | 'blue' | null — for results display
@@ -51,12 +53,18 @@ const ctx                = canvas.getContext('2d');
 const viewLobby          = document.getElementById('view-lobby');
 const viewSelect         = document.getElementById('view-game-select');
 const viewMapSelect      = document.getElementById('view-map-select');
+const viewPrep           = document.getElementById('view-prep');
 const viewResults        = document.getElementById('view-results');
 const playerCountEl      = document.getElementById('player-count');
 const teamRedListEl      = document.getElementById('team-red-list');
 const teamBlueListEl     = document.getElementById('team-blue-list');
 const gameGridEl         = document.getElementById('game-grid');
+const randomPickBtn      = document.getElementById('random-pick-btn');
 const mapGridEl          = document.getElementById('map-grid');
+const prepReelsRedEl     = document.getElementById('prep-reels-red');
+const prepReelsBlueEl    = document.getElementById('prep-reels-blue');
+const prepRosterEl       = document.getElementById('prep-roster');
+const prepCountdownEl    = document.getElementById('prep-countdown');
 const mapSelectTitleEl   = document.getElementById('map-select-game-title');
 const lobbyHintEl        = document.getElementById('lobby-hint');
 const scoreboardEl       = document.getElementById('results-scoreboard');
@@ -84,7 +92,7 @@ const BGM_PHASE_FADE_MS = 2200;   // slow fades when menus hand audio around
 
 // User-adjustable via the settings panel; persisted per screen device.
 let BGM_VOLUME = _loadVolume('setting_bgm_volume', 0.5);
-let SFX_VOLUME = _loadVolume('setting_sfx_volume', 0.7);
+let SFX_VOLUME = _loadVolume('setting_sfx_volume', 1.0);
 
 function _loadVolume(key, fallback) {
   const v = parseFloat(localStorage.getItem(key));
@@ -335,6 +343,13 @@ airconsole.onMessage = function (deviceId, data) {
       break;
     }
 
+    case MSG.RANDOM_PICK: {
+      if (deviceId !== masterId) return;
+      if (!sm.is(PHASE.GAME_SELECT) || randomPickBtn.disabled) return;
+      spinRandomPick();
+      break;
+    }
+
     case MSG.SELECT_MAP: {
       if (deviceId !== masterId) return;
       if (!sm.is(PHASE.MAP_SELECT)) return;
@@ -342,9 +357,62 @@ airconsole.onMessage = function (deviceId, data) {
       break;
     }
 
+    case MSG.PREP_READY: {
+      if (!sm.is(PHASE.PREP)) return;
+      if (state.activePlayers[deviceId] !== 'playing') return;
+      state.prepReady[deviceId] = true;
+      if (allPrepPlayersReady()) {
+        beginMatch();
+      } else {
+        broadcastState();
+        renderPrepRoster();
+      }
+      break;
+    }
+
+    case MSG.PREP_FORCE_START: {
+      if (deviceId !== masterId) return;
+      if (!sm.is(PHASE.PREP) || !state.prepUnlocked) return;
+      beginMatch();
+      break;
+    }
+
+    case MSG.PREP_REDRAW: {
+      if (deviceId !== masterId) return;
+      if (!sm.is(PHASE.PREP) || !state.prepUnlocked) return;
+      const targetId = String(data.targetId);
+      if (state.activePlayers[targetId] !== 'playing' || state.prepReady[targetId]) return;
+      const team = state.teams[targetId];
+      const spareIds = Object.entries(state.activePlayers)
+        .filter(([id, role]) => role === 'watching' && state.teams[id] === team)
+        .map(([id]) => id);
+      const [substituteId] = drawWeightedPlayers(spareIds, 1);
+      if (!substituteId) return; // no spare — host panel shouldn't have offered this
+      state.activePlayers[targetId] = 'watching';
+      state.activePlayers[substituteId] = 'playing';
+      delete state.prepReady[targetId];
+      broadcastState();
+      renderPrepRoster();
+      break;
+    }
+
     case MSG.CHEER: {
       if (!sm.is(PHASE.PLAYING)) return;
       if (data.emoji) addCheerEmoji(data.emoji, deviceId);
+      break;
+    }
+
+    case MSG.TUTORIAL_NEXT: {
+      if (!sm.is(PHASE.PLAYING) || !_tutorialPages) return;
+      if (String(deviceId) !== _tutorialControllerId) return;
+      tutorialPageNext();
+      break;
+    }
+
+    case MSG.TUTORIAL_PREV: {
+      if (!sm.is(PHASE.PLAYING) || !_tutorialPages) return;
+      if (String(deviceId) !== _tutorialControllerId) return;
+      tutorialPagePrev();
       break;
     }
 
@@ -400,31 +468,36 @@ airconsole.onMessage = function (deviceId, data) {
 
     case 'back_to_lobby': {
       if (deviceId !== masterId) return;
-      if (sm.is(PHASE.RESULTS)) {
-        // Fresh randomized split for the new set of rounds — players can
-        // then self-serve swap with the switch-team button.
-        state.teams = fillMissingTeams({}, Object.keys(state.players));
-        state.teamScores = { red: 0, blue: 0 };
-        state.playerPlayCounts = {};
-        airconsole.setActivePlayers(0);
-        sm.toLobby();
-        broadcastState();
-      } else if (sm.is(PHASE.GAME_SELECT) || sm.is(PHASE.MAP_SELECT)) {
+      if (sm.is(PHASE.GAME_SELECT) || sm.is(PHASE.MAP_SELECT)) {
         // Host backed out before the round started — no round was played,
         // so just return to the lobby with teams left exactly as they were.
         state.currentGame = null;
         state.selectedMap = null;
         sm.toLobby();
         broadcastState();
+      } else if (sm.is(PHASE.PREP)) {
+        // Host backs out mid-prep (wrong game/map, or things look off) —
+        // nobody's onStart() fired yet, so there's nothing to tear down
+        // beyond the prep state itself.
+        clearTimeout(_prepReadyTimer);
+        clearInterval(_prepCountdownInterval);
+        state.currentGame = null;
+        state.selectedMap = null;
+        state.activePlayers = {};
+        state.prepReady = {};
+        state.prepUnlocked = false;
+        sm.toGameSelect();
+        broadcastState();
       } else if (sm.is(PHASE.PLAYING)) {
         // Host aborts the round mid-game: tear the game down without
-        // crediting scores or a winner, keep teams as they were.
+        // crediting scores or a winner, and go straight back to picking a
+        // new game — teams stay exactly as they were, no need to re-split.
         state.currentGame?.onEnd?.();
         state.currentGame = null;
         airconsole.setActivePlayers(0);
         state.activePlayers = {};
         state.selectedMap = null;
-        sm.toLobby();
+        sm.toGameSelect();
         broadcastState();
       }
       break;
@@ -462,6 +535,8 @@ function broadcastState() {
   airconsole.setCustomDeviceStateProperty(STATE_KEY.TEAM_SCORES, state.teamScores);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.ACTIVE_PLAYERS, state.activePlayers);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.SELECTED_MAP, state.selectedMap);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.PREP_READY, state.prepReady);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.PREP_UNLOCKED, state.prepUnlocked);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.SCORES,
     Object.entries(state.players).reduce((acc, [id, p]) => {
       acc[id] = p.score;
@@ -498,6 +573,18 @@ function drawWeightedPlayers(teamIds, n) {
 function handleGameSelected(gameId) {
   const game = getGame(gameId);
   if (!game) return;
+
+  if (game.requireFullTeams) {
+    const { red, blue } = teamCounts(state.teams);
+    if (red < game.playersPerTeam || blue < game.playersPerTeam) {
+      airconsole.message(getHostId(), {
+        type: 'not_enough_players',
+        reason: `${game.name} 需要雙方隊伍都滿 ${game.playersPerTeam} 人才能開始`,
+      });
+      return;
+    }
+  }
+
   state.currentGame = game;
   state.selectedMap = null;
   state.activeMaps = null;
@@ -510,7 +597,7 @@ function handleGameSelected(gameId) {
     const { maps, autoIndex } = game.resolveModes(red, blue);
     if (autoIndex != null) {          // only one sane mode → straight into it
       state.selectedMap = autoIndex;
-      startGame();
+      enterPrep();
       return;
     }
     state.activeMaps = maps;
@@ -528,7 +615,7 @@ function handleGameSelected(gameId) {
     return;
   }
 
-  startGame();
+  enterPrep();
 }
 
 function handleMapSelected(mapIndex) {
@@ -536,10 +623,23 @@ function handleMapSelected(mapIndex) {
   const map = maps[mapIndex];
   if (!map || map.enabled === false) return;   // ignore out-of-range / disabled
   state.selectedMap = mapIndex;
-  startGame();
+  enterPrep();
 }
 
-function startGame() {
+// ---------------------------------------------------------------------------
+// PREP — reveal each team's picks (slot-machine style), then hold until
+// everyone drawn taps 準備 before the match actually begins. See
+// src/shared/constants.js for PREP_REEL_DURATION_MS / PREP_READY_TIMEOUT_MS.
+// ---------------------------------------------------------------------------
+let _prepReadyTimer = null;
+// Bumped on every enterPrep() so a stale runReveal() callback from an
+// aborted-then-immediately-re-picked PREP can tell it's no longer current
+// (sm.is(PHASE.PREP) alone isn't enough — that'd also be true for the NEW
+// pick, which has different redPicked/bluePicked closed over in the old
+// callback).
+let _prepGeneration = 0;
+
+function enterPrep() {
   const game = state.currentGame;
   if (!game) return;
   // Per-team headcount can depend on the picked mode (e.g. 1v1 vs 2v2).
@@ -550,12 +650,60 @@ function startGame() {
 
   const redPicked  = drawWeightedPlayers(redIds, ppt);
   const bluePicked = drawWeightedPlayers(blueIds, ppt);
-  const allPicked  = [...redPicked, ...bluePicked];
+
+  // activePlayers stays empty until the reveal actually lands on screen —
+  // broadcasting it now would let a drawn player's phone show the ready
+  // button before the shared spin even finishes, spoiling the reveal.
+  state.activePlayers = {};
+  state.prepReady = {};
+  state.prepUnlocked = false;
+  sm.toPrep();
+  broadcastState();
+
+  const gen = ++_prepGeneration;
+  runReveal(redIds, blueIds, redPicked, bluePicked, ppt, gen);
+}
+
+function allPrepPlayersReady() {
+  return Object.entries(state.activePlayers)
+    .filter(([, role]) => role === 'playing')
+    .every(([id]) => state.prepReady[id]);
+}
+
+function finishReveal(redPicked, bluePicked) {
+  const allPicked = [...redPicked, ...bluePicked];
 
   state.activePlayers = {};
   Object.keys(state.players).forEach(id => {
     state.activePlayers[id] = allPicked.includes(id) ? 'playing' : 'watching';
   });
+  state.prepReady = {};
+  state.prepUnlocked = false;
+  broadcastState();
+  renderPrepRoster();
+
+  if (allPicked.length === 0) { beginMatch(); return; } // nobody to wait on
+
+  startPrepCountdown(PREP_READY_TIMEOUT_MS / 1000);
+  clearTimeout(_prepReadyTimer);
+  _prepReadyTimer = setTimeout(() => {
+    // Host may have already backed out, or a race let everyone ready up
+    // right as the timer fired — either way there's nothing to unlock.
+    if (!sm.is(PHASE.PREP) || allPrepPlayersReady()) return;
+    state.prepUnlocked = true;
+    broadcastState();
+    renderPrepRoster();
+  }, PREP_READY_TIMEOUT_MS);
+}
+
+function beginMatch() {
+  const game = state.currentGame;
+  if (!game) return;
+  clearTimeout(_prepReadyTimer);
+
+  const allPicked = Object.entries(state.activePlayers)
+    .filter(([, role]) => role === 'playing')
+    .map(([id]) => id);
 
   allPicked.forEach(id => {
     state.playerPlayCounts[id] = (state.playerPlayCounts[id] || 0) + 1;
@@ -569,22 +717,170 @@ function startGame() {
 }
 
 // ---------------------------------------------------------------------------
+// PREP reveal — slot-machine reels, one per required slot. A single spin
+// reveals a whole team's roster at once; red/blue launch together. Pure
+// CSS-transition scroll (not a JS tick loop): the landing value is set as
+// the literal final transform, so it can never overshoot/undershoot.
+// ---------------------------------------------------------------------------
+const REEL_ROW_H = 64;          // px — must match .reel-row height in style.css
+const REEL_FILLER_COUNT = 24;   // decorative rows scrolled through before landing
+
+function buildReelRows(candidateIds, winnerId) {
+  const names = candidateIds.map(id => state.players[id]?.name ?? '???');
+  const randomName = () => names[Math.floor(Math.random() * names.length)];
+  const fillers = Array.from({ length: REEL_FILLER_COUNT }, randomName);
+  const winnerName = state.players[winnerId]?.name ?? '???';
+  return [...fillers, winnerName, randomName()]; // winner lands at index REEL_FILLER_COUNT
+}
+
+function renderReel(containerEl, candidateIds, winnerId) {
+  const rows = buildReelRows(candidateIds, winnerId);
+  const strip = document.createElement('div');
+  strip.className = 'reel-strip';
+  rows.forEach((name, i) => {
+    const row = document.createElement('div');
+    row.className = 'reel-row' + (i === REEL_FILLER_COUNT ? ' winner' : '');
+    row.textContent = name;
+    strip.appendChild(row);
+  });
+  const win = document.createElement('div');
+  win.className = 'reel-window';
+  win.appendChild(strip);
+  containerEl.appendChild(win);
+  return strip;
+}
+
+function spinReel(strip) {
+  const targetY = -(REEL_FILLER_COUNT - 1) * REEL_ROW_H;
+  strip.style.transition = 'none';
+  strip.style.transform = 'translateY(0px)';
+  // Force a reflow so the reset above actually commits before the
+  // transition is applied — otherwise the browser can coalesce both style
+  // writes into one paint and the reel just snaps to the end with no
+  // visible motion at all.
+  void strip.offsetHeight;
+  strip.style.transition = `transform ${PREP_REEL_DURATION_MS}ms cubic-bezier(0.12, 0.8, 0.2, 1)`;
+  strip.style.transform = `translateY(${targetY}px)`;
+}
+
+function runReveal(redIds, blueIds, redPicked, bluePicked, ppt, gen) {
+  const buildTeamBox = (containerEl, teamIds, pickedIds) => {
+    containerEl.innerHTML = '';
+    const needsSpin = teamIds.length > ppt;
+    if (!needsSpin) {
+      const msg = document.createElement('div');
+      msg.className = 'prep-instant';
+      msg.textContent = pickedIds.length ? '✅ 全隊上場！' : '（本隊無人可上場）';
+      containerEl.appendChild(msg);
+      return null;
+    }
+    return pickedIds.map(winnerId => renderReel(containerEl, teamIds, winnerId));
+  };
+
+  const redStrips  = buildTeamBox(prepReelsRedEl, redIds, redPicked);
+  const blueStrips = buildTeamBox(prepReelsBlueEl, blueIds, bluePicked);
+  const anySpin = !!(redStrips || blueStrips);
+
+  prepRosterEl.innerHTML = '';
+  prepCountdownEl.classList.add('hidden');
+
+  if (anySpin) {
+    playScreenSfx(clickSfx); // spin-start whoosh
+    // Launch every reel (both teams, all slots) in the same tick so they
+    // visually start together.
+    requestAnimationFrame(() => {
+      redStrips?.forEach(spinReel);
+      blueStrips?.forEach(spinReel);
+    });
+  }
+
+  const delay = anySpin ? PREP_REEL_DURATION_MS + 200 : 0;
+  setTimeout(() => {
+    // Stale — host backed out of PREP (and possibly re-picked a different
+    // game/map) while this reveal was still spinning.
+    if (gen !== _prepGeneration || !sm.is(PHASE.PREP)) return;
+    if (anySpin) playScreenSfx(hoverSfx); // landing click
+    finishReveal(redPicked, bluePicked);
+  }, delay);
+}
+
+let _prepCountdownInterval = null;
+
+function startPrepCountdown(seconds) {
+  clearInterval(_prepCountdownInterval);
+  let remaining = seconds;
+  const tick = () => {
+    if (!sm.is(PHASE.PREP) || state.prepUnlocked || allPrepPlayersReady()) {
+      clearInterval(_prepCountdownInterval);
+      return;
+    }
+    prepCountdownEl.classList.remove('hidden');
+    prepCountdownEl.textContent = `⏳ 還有 ${Math.max(0, remaining)} 秒未準備，時間到房主可以協助處理`;
+    remaining -= 1;
+  };
+  tick();
+  _prepCountdownInterval = setInterval(tick, 1000);
+}
+
+function renderPrepRoster() {
+  prepRosterEl.innerHTML = '';
+  const entries = Object.entries(state.activePlayers).filter(([, role]) => role === 'playing');
+  entries.forEach(([id]) => {
+    const ready = !!state.prepReady[id];
+    const team = state.teams[id] ?? 'red';
+    const row = document.createElement('div');
+    row.className = 'prep-roster-row' + (ready ? ' ready' : '');
+    row.innerHTML = `
+      <span class="prep-roster-dot ${team}"></span>
+      <span class="prep-roster-name">${state.players[id]?.name ?? '???'}</span>
+      <span class="prep-roster-status">${ready ? '✅ 已準備' : '⏳ 準備中…'}</span>
+    `;
+    prepRosterEl.appendChild(row);
+  });
+
+  if (state.prepUnlocked) {
+    clearInterval(_prepCountdownInterval);
+    prepCountdownEl.classList.remove('hidden');
+    prepCountdownEl.textContent = '⏰ 時間到！房主可以強制開始或重抽尚未準備的人';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // How-to-play card — pops over every game start. The game module is already
 // running (its BGM plays under the card) but update()/onInput() hold until
-// the card is dismissed: mouse 開始！, or the auto-start countdown.
+// the card is dismissed. Two formats, picked by whether the game defines
+// tutorial.pages: the original text/single-comic card (mouse 開始！ or an
+// auto-start countdown), or a flip-through picture book driven by anyone's
+// controller A/B (see MSG.TUTORIAL_NEXT/PREV below).
 // ---------------------------------------------------------------------------
 const TUTORIAL_SECONDS = 15;
-const tutorialOverlay   = document.getElementById('tutorial-overlay');
-const tutorialStartBtn  = document.getElementById('tutorial-start-btn');
-const tutorialCountdown = document.getElementById('tutorial-countdown');
+const tutorialOverlay    = document.getElementById('tutorial-overlay');
+const tutorialClassicEl  = document.getElementById('tutorial-classic');
+const tutorialStartBtn   = document.getElementById('tutorial-start-btn');
+const tutorialCountdown  = document.getElementById('tutorial-countdown');
+const tutorialPagedEl    = document.getElementById('tutorial-paged');
+const tutorialPageImg    = document.getElementById('tutorial-page-img');
+const tutorialPageCounter = document.getElementById('tutorial-page-counter');
+const tutorialPagePrevBtn = document.getElementById('tutorial-page-prev');
+const tutorialPageNextBtn = document.getElementById('tutorial-page-next');
 let _tutorialTimer = null;
 
 function showTutorial(game) {
   const tut = game.tutorial;
   if (!tut) return;
   state.tutorialActive = true;
-
   document.getElementById('tutorial-title').textContent = `${game.emoji} ${game.name}`;
+
+  if (tut.pages?.length) {
+    tutorialClassicEl.classList.add('hidden');
+    tutorialPagedEl.classList.remove('hidden');
+    tutorialOverlay.classList.remove('hidden');
+    startTutorialPages(tut.pages);
+    return;
+  }
+
+  tutorialPagedEl.classList.add('hidden');
+  tutorialClassicEl.classList.remove('hidden');
 
   // Comic-strip tutorials replace the text sections entirely — the hub is
   // migrating game-by-game from text/emoji cards to drawn how-to-play comics.
@@ -625,14 +921,92 @@ function showTutorial(game) {
 function hideTutorial() {
   clearInterval(_tutorialTimer);
   _tutorialTimer = null;
+  const wasPaged = !!_tutorialPages;
+  clearTimeout(_tutorialPageTimer);
+  _tutorialPageTimer = null;
+  _tutorialPages = null;
+  _tutorialControllerId = null;
   tutorialOverlay.classList.add('hidden');
   state.tutorialActive = false;
+  if (wasPaged) broadcastTutorialPage(); // tells controllers the paging UI is gone (count → 0)
 }
 
 tutorialStartBtn.addEventListener('click', hideTutorial);
 // Same two-stage SFX as the intro's 開始遊戲 button
 tutorialStartBtn.addEventListener('mouseenter', () => playScreenSfx(hoverSfx));
 tutorialStartBtn.addEventListener('click', () => playScreenSfx(clickSfx));
+
+// ---------------------------------------------------------------------------
+// How-to-play picture book — flip-through pages. Only ONE drawn player (the
+// host if they're playing this round, otherwise whichever drawn player
+// sorts first) controls it, using their own game's real A/B gamepad
+// buttons (src/controller/main.js delegates .btn-a/.btn-b clicks to
+// MSG.TUTORIAL_PREV/NEXT while they're the designated controller — see the
+// comment there for why hijacking the real buttons is safe even though the
+// game's own handler for them may also fire). A click on either side of the
+// image here on the shared screen works too. 30s/page auto-advance safety
+// net so the room can't stall forever if the designated controller is AFK;
+// the last page auto-starts the same way the classic card's countdown does.
+// ---------------------------------------------------------------------------
+let _tutorialPages = null;
+let _tutorialPageIndex = 0;
+let _tutorialPageTimer = null;
+let _tutorialControllerId = null;
+
+function pickTutorialController() {
+  const playingIds = Object.entries(state.activePlayers)
+    .filter(([, role]) => role === 'playing')
+    .map(([id]) => id);
+  if (!playingIds.length) return null;
+  const hostId = String(getHostId());
+  return playingIds.includes(hostId) ? hostId : playingIds[0];
+}
+
+function startTutorialPages(pages) {
+  _tutorialPages = pages;
+  _tutorialPageIndex = 0;
+  _tutorialControllerId = pickTutorialController();
+  renderTutorialPage();
+}
+
+function renderTutorialPage() {
+  tutorialPageImg.src = _tutorialPages[_tutorialPageIndex];
+  tutorialPageCounter.textContent = `${_tutorialPageIndex + 1} / ${_tutorialPages.length}`;
+  tutorialPagePrevBtn.disabled = _tutorialPageIndex === 0;
+  broadcastTutorialPage();
+
+  clearTimeout(_tutorialPageTimer);
+  _tutorialPageTimer = setTimeout(tutorialPageNext, TUTORIAL_PAGE_AUTO_MS);
+}
+
+function tutorialPageNext() {
+  if (!_tutorialPages) return;
+  if (_tutorialPageIndex >= _tutorialPages.length - 1) {
+    hideTutorial();
+    return;
+  }
+  _tutorialPageIndex += 1;
+  playScreenSfx(hoverSfx);
+  renderTutorialPage();
+}
+
+function tutorialPagePrev() {
+  if (!_tutorialPages || _tutorialPageIndex === 0) return;
+  _tutorialPageIndex -= 1;
+  playScreenSfx(hoverSfx);
+  renderTutorialPage();
+}
+
+function broadcastTutorialPage() {
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PAGE_COUNT, _tutorialPages?.length ?? 0);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PAGE, _tutorialPageIndex);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_CONTROLLER, _tutorialControllerId);
+}
+
+// tutorialPageNext()/Prev() already play their own SFX (shared with the
+// MSG.TUTORIAL_NEXT/PREV path below) — the click handlers just trigger them.
+tutorialPageNextBtn.addEventListener('click', tutorialPageNext);
+tutorialPagePrevBtn.addEventListener('click', tutorialPagePrev);
 
 function endGame(winnerTeam) {
   // Games report their winner explicitly; anything else counts as a draw
@@ -705,10 +1079,11 @@ function onPhaseChange(newPhase) {
   else if (viewIntro.classList.contains('hidden') || introVideo.muted) startBgm();
 
   updateHomeBtn();
-  if (newPhase !== PHASE.PLAYING) hideTutorial(); // e.g. ↩ 大廳 mid-tutorial
+  if (newPhase !== PHASE.PLAYING) hideTutorial(); // e.g. ↩ 選遊戲 mid-tutorial
   viewLobby.classList.toggle(    'hidden', newPhase !== PHASE.LOBBY);
   viewSelect.classList.toggle(   'hidden', newPhase !== PHASE.GAME_SELECT);
   viewMapSelect.classList.toggle('hidden', newPhase !== PHASE.MAP_SELECT);
+  viewPrep.classList.toggle(     'hidden', newPhase !== PHASE.PREP);
   viewResults.classList.toggle(  'hidden', newPhase !== PHASE.RESULTS);
 
   if (newPhase === PHASE.LOBBY)       renderLobby();
@@ -808,19 +1183,7 @@ function renderGameSelect() {
   `;
 
   gameGridEl.innerHTML = '';
-
-  // Slot 1: "random pick" meta-card — not a game, skips manual selection by
-  // jumping straight into a randomly chosen game from the current lineup.
-  const randomCard = document.createElement('div');
-  randomCard.className = 'game-card has-cover random-pick';
-  randomCard.innerHTML = `<img class="game-cover" src="random_start_cover.png" alt="隨機開始" />`;
-  randomCard.addEventListener('mouseenter', () => playScreenSfx(hoverSfx));
-  randomCard.addEventListener('click', () => {
-    playScreenSfx(clickSfx);
-    const pick = GAMES[Math.floor(Math.random() * GAMES.length)];
-    handleGameSelected(pick.id);
-  });
-  gameGridEl.appendChild(randomCard);
+  randomPickBtn.disabled = false;
 
   GAMES.forEach(game => {
     const card = document.createElement('div');
@@ -844,10 +1207,21 @@ function renderGameSelect() {
     gameGridEl.appendChild(card);
   });
 
+  // Games with cover art but no mechanics yet — real thumbnail, but inert
+  // and flagged with a corner ribbon instead of the blank "❓" placeholder.
+  UPCOMING_GAMES.forEach(game => {
+    const card = document.createElement('div');
+    card.className = 'game-card has-cover upcoming';
+    card.innerHTML = `
+      <img class="game-cover" src="${game.cover}" alt="${game.name}" />
+      <span class="upcoming-badge">即將推出</span>
+    `;
+    gameGridEl.appendChild(card);
+  });
+
   // Fill the rest of the planned lineup with "coming soon" placeholders so
   // the grid reads as "more on the way" instead of an unbalanced last row.
-  // -1 accounts for the random-pick card occupying slot 1.
-  const comingSoonCount = Math.max(0, TOTAL_GAME_SLOTS - GAMES.length - 1);
+  const comingSoonCount = Math.max(0, TOTAL_GAME_SLOTS - GAMES.length - UPCOMING_GAMES.length);
   for (let i = 0; i < comingSoonCount; i++) {
     const card = document.createElement('div');
     card.className = 'game-card coming-soon';
@@ -857,6 +1231,66 @@ function renderGameSelect() {
     `;
     gameGridEl.appendChild(card);
   }
+}
+
+// ---------------------------------------------------------------------------
+// 🎲 隨機開始 — chase-light "bingo machine" spin across the real game cards,
+// landing on a randomly chosen game before actually starting it.
+// ---------------------------------------------------------------------------
+randomPickBtn.addEventListener('mouseenter', () => playScreenSfx(hoverSfx));
+randomPickBtn.addEventListener('click', () => {
+  if (!sm.is(PHASE.GAME_SELECT) || randomPickBtn.disabled) return;
+  playScreenSfx(clickSfx);
+  spinRandomPick();
+});
+
+function spinRandomPick() {
+  // Must match GAMES exactly, in order — .upcoming previews have cover art
+  // too but aren't real games, so a plain :not(.coming-soon) selector would
+  // wrongly include them and desync the index from GAMES[winnerIndex].
+  const cardEls = Array.from(gameGridEl.querySelectorAll('.game-card:not(.coming-soon):not(.upcoming)'));
+  if (!cardEls.length) return;
+  randomPickBtn.disabled = true;
+
+  const n = cardEls.length;
+  const winnerIndex = Math.floor(Math.random() * n);
+  const rounds = 3; // full loops around the grid before landing
+  const totalTicks = winnerIndex + 1 + rounds * n;
+  const MIN_DELAY_MS = 70;
+  const MAX_DELAY_MS = 420;
+
+  let tick = 0;
+  let litEl = null;
+
+  function step() {
+    if (!sm.is(PHASE.GAME_SELECT)) return; // left the screen mid-spin
+
+    if (litEl) litEl.classList.remove('lit');
+    litEl = cardEls[tick % n];
+    litEl.classList.add('lit');
+    playScreenSfx(hoverSfx);
+    tick++;
+
+    if (tick >= totalTicks) {
+      setTimeout(() => {
+        randomPickBtn.disabled = false;
+        if (!sm.is(PHASE.GAME_SELECT)) return;
+        playScreenSfx(clickSfx);
+        handleGameSelected(GAMES[winnerIndex].id);
+        // Rejected (e.g. team-size requirement not met) — still here, so
+        // clear the landed highlight instead of leaving it stuck lit.
+        if (sm.is(PHASE.GAME_SELECT)) litEl.classList.remove('lit');
+      }, 700);
+      return;
+    }
+
+    // Ease the tick interval from fast to slow, like a wheel spinning down.
+    const progress = tick / totalTicks;
+    const delay = MIN_DELAY_MS + (MAX_DELAY_MS - MIN_DELAY_MS) * Math.pow(progress, 3);
+    setTimeout(step, delay);
+  }
+
+  step();
 }
 
 // ---------------------------------------------------------------------------

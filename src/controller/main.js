@@ -12,12 +12,18 @@ const state = {
   phase:         PHASE.LOBBY,
   isMaster:      false,
   myTeam:        null,
+  teams:         {},            // { [deviceId]: 'red' | 'blue' } — full map, needed for the PREP host panel's redraw-spare check
   players:       {},
   gameList:      [],
   mapList:       [],            // from STATE_KEY.MAP_LIST
   currentGameId: null,
   activePlayers: {},            // { [deviceId]: 'playing' | 'watching' }
   teamScores:    { red: 0, blue: 0 },
+  prepReady:     {},            // { [deviceId]: true } — from STATE_KEY.PREP_READY
+  prepUnlocked:  false,         // from STATE_KEY.PREP_UNLOCKED
+  tutorialPage:      0,         // from STATE_KEY.TUTORIAL_PAGE
+  tutorialPageCount: 0,         // from STATE_KEY.TUTORIAL_PAGE_COUNT — 0 means no paged tutorial active
+  tutorialControllerId: null,   // from STATE_KEY.TUTORIAL_CONTROLLER — deviceId (string) of the one player flipping pages
   _prevMyRole:   null,          // track my previous playing/watching role
   _activeLayoutGameId: null,    // gameId the mounted controller-layout belongs to
   _lastSent:     {},
@@ -35,6 +41,10 @@ const views = {
   gameSelectPlayer: document.getElementById('game-select-player'),
   mapSelectMaster:  document.getElementById('map-select-master'),
   mapSelectPlayer:  document.getElementById('map-select-player'),
+  prepWaiting:      document.getElementById('prep-waiting'),
+  prepReadyPending: document.getElementById('prep-ready-pending'),
+  prepReadyDone:    document.getElementById('prep-ready-done'),
+  prepWatching:     document.getElementById('prep-watching'),
   controls:        document.getElementById('controls'),
   cheering:        document.getElementById('cheering'),
   resultsMaster:   document.getElementById('results-master'),
@@ -43,6 +53,9 @@ const views = {
 
 const gameSelectList = document.getElementById('game-select-list');
 const mapSelectList  = document.getElementById('map-select-list');
+const prepHostPanel  = document.getElementById('prep-host-panel');
+const prepRosterList = document.getElementById('prep-roster-list');
+const prepReadyCount = document.getElementById('prep-ready-count');
 
 // ---------------------------------------------------------------------------
 // Menu button SFX — one confirm cue on activation (click). Delegated on
@@ -66,7 +79,7 @@ menuSfx.preload = 'auto';
 function applySfxVolume(v) {
   menuSfx.volume = Math.max(0, Math.min(1, v));
 }
-applySfxVolume(0.7);
+applySfxVolume(1.0);
 
 // Bubble phase on purpose: the list drag-scroll guard below cancels
 // accidental clicks with stopPropagation in the capture phase, and those
@@ -187,6 +200,7 @@ airconsole.onMessage = function (deviceId, data) {
   }
   if (data.type === 'host_request') showHostRequest(data.fromId, data.fromName);
   if (data.type === 'host_denied') showToast('房主拒絕了你的申請');
+  if (data.type === 'not_enough_players') showToast(data.reason || '人數不足，無法開始這個遊戲');
 };
 
 function flashHit() {
@@ -217,12 +231,33 @@ airconsole.onCustomDeviceStateChange = function (deviceId, customData) {
   }
 
   if (customData[STATE_KEY.TEAMS] !== undefined) {
+    state.teams = customData[STATE_KEY.TEAMS];
     const myId = String(airconsole.getDeviceId());
-    state.myTeam = customData[STATE_KEY.TEAMS][myId] ?? null;
+    state.myTeam = state.teams[myId] ?? null;
   }
 
   if (customData[STATE_KEY.ACTIVE_PLAYERS] !== undefined) {
     state.activePlayers = customData[STATE_KEY.ACTIVE_PLAYERS];
+  }
+
+  if (customData[STATE_KEY.PREP_READY] !== undefined) {
+    state.prepReady = customData[STATE_KEY.PREP_READY];
+  }
+
+  if (customData[STATE_KEY.PREP_UNLOCKED] !== undefined) {
+    state.prepUnlocked = customData[STATE_KEY.PREP_UNLOCKED];
+  }
+
+  if (customData[STATE_KEY.TUTORIAL_PAGE] !== undefined) {
+    state.tutorialPage = customData[STATE_KEY.TUTORIAL_PAGE];
+  }
+
+  if (customData[STATE_KEY.TUTORIAL_PAGE_COUNT] !== undefined) {
+    state.tutorialPageCount = customData[STATE_KEY.TUTORIAL_PAGE_COUNT];
+  }
+
+  if (customData[STATE_KEY.TUTORIAL_CONTROLLER] !== undefined) {
+    state.tutorialControllerId = customData[STATE_KEY.TUTORIAL_CONTROLLER];
   }
 
   if (customData[STATE_KEY.SFX_VOLUME] !== undefined) {
@@ -250,8 +285,10 @@ airconsole.onCustomDeviceStateChange = function (deviceId, customData) {
     unmountLayout();
   }
 
-  // "你上場了！" notification
-  if (state.phase === PHASE.PLAYING && state._prevMyRole !== 'playing' && myRole === 'playing') {
+  // "你上場了！" notification — now first learned during PREP (the reveal),
+  // not PLAYING, since that's when activePlayers actually gets populated.
+  if ((state.phase === PHASE.PREP || state.phase === PHASE.PLAYING)
+      && state._prevMyRole !== 'playing' && myRole === 'playing') {
     showYouAreUp();
   }
   state._prevMyRole = myRole;
@@ -334,6 +371,23 @@ function refreshUI() {
     if (isMaster) { renderMapSelectList(); showOnly('mapSelectMaster'); }
     else showOnly('mapSelectPlayer');
 
+  } else if (phase === PHASE.PREP) {
+    if (myRole === 'playing') {
+      if (state.prepReady[myId]) {
+        showOnly('prepReadyDone');
+        const playingIds = Object.entries(state.activePlayers)
+          .filter(([, r]) => r === 'playing').map(([id]) => id);
+        const readyCount = playingIds.filter(id => state.prepReady[id]).length;
+        prepReadyCount.textContent = `${readyCount}/${playingIds.length} 已準備`;
+      } else {
+        showOnly('prepReadyPending');
+      }
+    } else if (myRole === 'watching') {
+      showOnly('prepWatching');
+    } else {
+      showOnly('prepWaiting'); // reveal hasn't landed yet — activePlayers still empty
+    }
+
   } else if (phase === PHASE.PLAYING) {
     if (myRole === 'playing') showOnly('controls');
     else showOnly('cheering');
@@ -345,16 +399,91 @@ function refreshUI() {
     showOnly('waiting');
   }
 
-  // Host's in-game escape hatch — only during PLAYING (other phases have
-  // their own back buttons inside the view).
-  const showBack = isMaster && phase === PHASE.PLAYING;
+  // Host's in-game escape hatch — PLAYING (mid-round abort) and PREP (bail
+  // out of a bad pick before the round even starts); other phases have
+  // their own back buttons inside the view.
+  const showBack = isMaster && (phase === PHASE.PLAYING || phase === PHASE.PREP);
   ingameBackBtn.classList.toggle('hidden', !showBack);
   if (!showBack) {
     ingameBackBtn.classList.remove('confirming');
-    ingameBackBtn.textContent = '↩ 大廳';
+    ingameBackBtn.textContent = '重選遊戲';
   }
 
+  // PREP host override panel — persistent overlay, same treatment as
+  // ingameBackBtn, shown on top of whichever of the 4 PREP views above the
+  // host is also seeing as a participant.
+  const showPrepPanel = isMaster && phase === PHASE.PREP && state.prepUnlocked;
+  prepHostPanel.classList.toggle('hidden', !showPrepPanel);
+  if (showPrepPanel) renderPrepHostPanel();
+
+  // How-to-play book badge — persistent overlay like ingameBackBtn, shown
+  // only to the ONE drawn player controlling the picture book, layered on
+  // top of their normal (held) game controls.
+  const showTutorialBadge = phase === PHASE.PLAYING
+    && state.tutorialPageCount > 0 && myId === state.tutorialControllerId;
+  tutorialControllerBadge.classList.toggle('hidden', !showTutorialBadge);
+  if (showTutorialBadge) renderTutorialControllerBadge();
+  // Re-enables this game's normally-inactive A/B buttons (see .abxy-btn.inactive
+  // override in style.css) so the designated controller can actually tap them.
+  document.body.classList.toggle('tutorial-controlling', showTutorialBadge);
+
   renderTeamBadges();
+}
+
+// ---------------------------------------------------------------------------
+// How-to-play picture book — only the designated controller (see
+// STATE_KEY.TUTORIAL_CONTROLLER) can flip pages, using their own game's
+// real A/B gamepad buttons (.abxy-btn.btn-a/.btn-b — every controller-layout
+// renders these, active or not). Delegated on document so it works no
+// matter which game's layout is mounted underneath. The game's own handler
+// for these buttons (if any) may also fire — harmless, since gameplay
+// input is already dropped screen-side while a tutorial is active.
+// ---------------------------------------------------------------------------
+const tutorialControllerBadge = document.getElementById('tutorial-controller-badge');
+const tutorialControllerPage  = document.getElementById('tutorial-controller-page');
+
+function renderTutorialControllerBadge() {
+  tutorialControllerPage.textContent = `${(state.tutorialPage ?? 0) + 1} / ${state.tutorialPageCount ?? 0}`;
+}
+
+document.addEventListener('click', e => {
+  if (state.tutorialPageCount <= 0) return;
+  if (String(airconsole.getDeviceId()) !== state.tutorialControllerId) return;
+  const btn = e.target.closest?.('.abxy-btn.btn-a, .abxy-btn.btn-b');
+  if (!btn) return;
+  const type = btn.classList.contains('btn-b') ? MSG.TUTORIAL_NEXT : MSG.TUTORIAL_PREV;
+  airconsole.message(AirConsole.SCREEN, { type });
+});
+
+// ---------------------------------------------------------------------------
+// PREP host override panel (master only, shown once STATE_KEY.PREP_UNLOCKED)
+// ---------------------------------------------------------------------------
+function renderPrepHostPanel() {
+  prepRosterList.innerHTML = '';
+  const notReady = Object.entries(state.activePlayers)
+    .filter(([id, role]) => role === 'playing' && !state.prepReady[id]);
+
+  if (!notReady.length) {
+    prepRosterList.innerHTML = '<p class="hint">大家都準備好了！</p>';
+    return;
+  }
+
+  notReady.forEach(([id]) => {
+    const team = state.teams[id];
+    const hasSpare = Object.entries(state.activePlayers)
+      .some(([otherId, role]) => role === 'watching' && state.teams[otherId] === team);
+
+    const row = document.createElement('div');
+    row.className = 'prep-panel-row';
+    row.innerHTML = `
+      <span class="prep-panel-name">${state.players[id]?.name ?? '???'}</span>
+      <button class="secondary-btn prep-redraw-btn"${hasSpare ? '' : ' disabled'}>🔄 重抽</button>
+    `;
+    row.querySelector('.prep-redraw-btn').addEventListener('click', () => {
+      airconsole.message(AirConsole.SCREEN, { type: MSG.PREP_REDRAW, targetId: id });
+    });
+    prepRosterList.appendChild(row);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -367,14 +496,25 @@ function renderGameSelectList() {
     const btn = document.createElement('button');
     // Cover art mirrors the screen's grid — the phone shows a shrunk-down
     // copy of what the TV shows, same order, same artwork.
-    btn.className = game.cover ? 'game-select-btn has-cover' : 'game-select-btn';
-    btn.style.setProperty('--game-color', game.color);
-    btn.innerHTML = game.cover
-      ? `<img class="gs-cover" src="${game.cover}" alt="${game.name}" />`
-      : `<span class="gs-emoji">${game.emoji}</span><span class="gs-name">${game.name}</span>`;
-    btn.addEventListener('click', () => {
-      airconsole.message(AirConsole.SCREEN, { type: MSG.SELECT_GAME, gameId: game.id });
-    });
+    if (game.comingSoon) {
+      // Cover art exists but the game isn't built yet — real thumbnail,
+      // same non-clickable treatment as the screen's gold "即將推出" pill.
+      btn.className = 'game-select-btn has-cover upcoming';
+      btn.disabled = true;
+      btn.innerHTML = `
+        <img class="gs-cover" src="${game.cover}" alt="${game.name}" />
+        <span class="gs-upcoming-badge">即將推出</span>
+      `;
+    } else {
+      btn.className = game.cover ? 'game-select-btn has-cover' : 'game-select-btn';
+      btn.style.setProperty('--game-color', game.color);
+      btn.innerHTML = game.cover
+        ? `<img class="gs-cover" src="${game.cover}" alt="${game.name}" />`
+        : `<span class="gs-emoji">${game.emoji}</span><span class="gs-name">${game.name}</span>`;
+      btn.addEventListener('click', () => {
+        airconsole.message(AirConsole.SCREEN, { type: MSG.SELECT_GAME, gameId: game.id });
+      });
+    }
     gameSelectList.appendChild(btn);
   });
 
@@ -430,6 +570,9 @@ document.querySelectorAll('.cheer-btn').forEach(btn => {
 document.getElementById('start-btn')?.addEventListener('click', () => {
   airconsole.message(AirConsole.SCREEN, { type: MSG.REQUEST_START });
 });
+document.getElementById('game-select-random-btn')?.addEventListener('click', () => {
+  airconsole.message(AirConsole.SCREEN, { type: MSG.RANDOM_PICK });
+});
 document.querySelectorAll('.switch-team-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     airconsole.message(AirConsole.SCREEN, { type: MSG.SWITCH_TEAM });
@@ -481,18 +624,24 @@ document.getElementById('host-deny-btn')?.addEventListener('click', () => {
 document.getElementById('play-again-btn')?.addEventListener('click', () => {
   airconsole.message(AirConsole.SCREEN, { type: 'play_again' });
 });
-document.getElementById('back-to-lobby-btn')?.addEventListener('click', () => {
-  airconsole.message(AirConsole.SCREEN, { type: 'back_to_lobby' });
-});
 document.getElementById('game-select-back-btn')?.addEventListener('click', () => {
   airconsole.message(AirConsole.SCREEN, { type: 'back_to_lobby' });
 });
 document.getElementById('map-select-back-btn')?.addEventListener('click', () => {
   airconsole.message(AirConsole.SCREEN, { type: 'back_to_lobby' });
 });
+document.getElementById('prep-ready-btn')?.addEventListener('click', () => {
+  airconsole.message(AirConsole.SCREEN, { type: MSG.PREP_READY });
+});
+document.getElementById('prep-force-start-btn')?.addEventListener('click', () => {
+  airconsole.message(AirConsole.SCREEN, { type: MSG.PREP_FORCE_START });
+});
 
-// In-game back-to-lobby (host only). Two-tap confirm: mid-game the host's
-// thumbs are busy, so a single stray tap shouldn't kill the round.
+// In-game back-to-game-select (host only). Two-tap confirm: mid-game the
+// host's thumbs are busy, so a single stray tap shouldn't kill the round.
+// Sends the same 'back_to_lobby' message the other back buttons use — the
+// screen routes it by current phase, and during PLAYING that now lands on
+// game select (teams stay as they are) rather than the team lobby.
 const ingameBackBtn = document.getElementById('ingame-back-btn');
 let _backConfirmTimer = null;
 
@@ -500,7 +649,7 @@ ingameBackBtn.addEventListener('click', () => {
   if (ingameBackBtn.classList.contains('confirming')) {
     clearTimeout(_backConfirmTimer);
     ingameBackBtn.classList.remove('confirming');
-    ingameBackBtn.textContent = '↩ 大廳';
+    ingameBackBtn.textContent = '重選遊戲';
     airconsole.message(AirConsole.SCREEN, { type: 'back_to_lobby' });
   } else {
     ingameBackBtn.classList.add('confirming');
@@ -508,7 +657,7 @@ ingameBackBtn.addEventListener('click', () => {
     clearTimeout(_backConfirmTimer);
     _backConfirmTimer = setTimeout(() => {
       ingameBackBtn.classList.remove('confirming');
-      ingameBackBtn.textContent = '↩ 大廳';
+      ingameBackBtn.textContent = '重選遊戲';
     }, 3000);
   }
 });

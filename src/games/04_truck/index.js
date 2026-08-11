@@ -15,7 +15,7 @@ import { truncateName } from '../../shared/nameDisplay.js';
 import { TEAM_COLOR } from '../../shared/constants.js';
 import { createLoopingBgm } from '../../shared/loopingBgm.js';
 
-const bgm = createLoopingBgm('truck/truck_bgm.mp3');
+const bgm = createLoopingBgm('04_truck/truck_bgm.mp3');
 
 const LOGICAL_W = 1600, LOGICAL_H = 900;
 const ARENA = { cx: LOGICAL_W / 2, cy: LOGICAL_H / 2, rx: LOGICAL_W / 2 - 30, ry: LOGICAL_H / 2 - 30 };
@@ -38,21 +38,21 @@ function loadAnimalImages() {
   if (animalImages) return;
   animalImages = ANIMAL_IMAGE_NAMES.map(name => {
     const img = new Image();
-    img.src = `truck/animals/${name}.png`;
+    img.src = `04_truck/animals/${name}.png`;
     return img;
   });
 }
 
 const arenaBgImg = new Image();
-arenaBgImg.src = 'truck/truck_arena_bg.png';
+arenaBgImg.src = '04_truck/truck_arena_bg.png';
 
 const TRUCK_DRAW_W = 60; // slightly larger than the old flat-rect footprint (52) — the art reads better a touch bigger
 const TRUCK_SPRITES = {
   red: new Image(),
   blue: new Image(),
 };
-TRUCK_SPRITES.red.src = 'truck/truck_red.png';
-TRUCK_SPRITES.blue.src = 'truck/truck_blue.png';
+TRUCK_SPRITES.red.src = '04_truck/truck_red.png';
+TRUCK_SPRITES.blue.src = '04_truck/truck_blue.png';
 
 let tk = null; // module-level game state
 
@@ -288,7 +288,7 @@ export default {
   playersPerTeam: TRUCKS_PER_TEAM,
   color: '#7ec850',
   emoji: '🚚',
-  cover: 'truck/truck_cover.png',
+  cover: '04_truck/truck_cover.png',
 
   tutorial: {
     goal: '90 秒內幫隊伍收集最多動物就獲勝！',

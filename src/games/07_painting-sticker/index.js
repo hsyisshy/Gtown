@@ -1,5 +1,5 @@
 /**
- * 仿畫大作戰 — ported from painting_sticker/game.js.
+ * 仿畫行動 — ported from painting_sticker/game.js.
  *
  * Red vs blue, 1 active cursor per team (playersPerTeam: 1). Each team grabs
  * torn-paper pieces from its own rack and drops them onto its own canvas,
@@ -46,9 +46,9 @@ function loadImage(src) {
 
 // ---- Asset loading (one painting shared by both teams' racks) -------------
 async function loadPaintingAndPieces() {
-  const manifest = await (await fetch('painting-sticker/paintings/manifest.json')).json();
+  const manifest = await (await fetch('07_painting-sticker/paintings/manifest.json')).json();
   const paintingId = manifest[Math.floor(Math.random() * manifest.length)];
-  const rawImage = await loadImage(`painting-sticker/paintings/${paintingId}/raw.png`);
+  const rawImage = await loadImage(`07_painting-sticker/paintings/${paintingId}/raw.png`);
   const seed = Math.floor(Math.random() * 2147483647);
   const grid = computeGridForCount(PIECES_PER_TEAM);
   const config = { ...TEAR_CONFIG, cols: grid.cols, rows: grid.rows, randomSeed: seed };
@@ -554,11 +554,12 @@ function _finish(globalState) {
 
 export default {
   id: 'painting-sticker',
-  name: '仿畫大作戰',
+  name: '仿畫行動',
   description: '搶碎片、拼出原畫，比比看誰的畫布更像！',
   playersPerTeam: 1,
   color: '#d9895a',
   emoji: '🖼️',
+  cover: '07_painting-sticker/painting_cover.png',
 
   tutorial: {
     goal: '限時內從自己的碎片架搶碎片、貼到畫布上拼出原畫。時間到或提早鎖定分數後，相似度較高的隊伍獲勝！',

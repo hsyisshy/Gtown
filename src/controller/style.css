@@ -261,6 +261,19 @@ body {
   -webkit-overflow-scrolling: touch;
 }
 
+/* 🎲 隨機開始 sits next to 重新分隊 below the grid, side by side so neither
+   reads as more "primary" than the other — same width cap as the list
+   above so the pair lines up under it. */
+.game-select-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+}
+.game-select-actions .secondary-btn {
+  flex: 1;
+}
+
 /* Cream signboard button, matching the screen's game-card and the
    controller's own wood-plaque .switch-team-btn — a village shop sign
    you tap instead of a sci-fi tile. */
@@ -321,6 +334,28 @@ body {
   aspect-ratio: 3 / 2;
   object-fit: contain;
   filter: drop-shadow(0 3px 0 rgba(43, 32, 21, 0.45));
+}
+
+/* Cover art exists but the game isn't built yet — real thumbnail, same
+   non-clickable gold-pill treatment as the screen's "即將推出" badge. */
+.game-select-btn.upcoming {
+  position: relative;
+  cursor: default;
+}
+.gs-upcoming-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: linear-gradient(180deg, #fff0a0 0%, #ffd000 60%, #ff9a00 100%);
+  color: #6b2a00;
+  font-size: 0.6rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1.5px solid #2b2015;
+  box-shadow: 0 2px 0 rgba(43, 32, 21, 0.5);
+  white-space: nowrap;
 }
 
 /* Empty slot in the planned lineup — same treatment as the screen's
@@ -558,6 +593,16 @@ body {
   pointer-events: none;
 }
 
+/* While this device is the designated tutorial-book controller, re-enable
+   whichever of A/B this game normally leaves inactive (e.g. hospital uses
+   neither) so they can actually be tapped to flip pages. */
+body.tutorial-controlling .abxy-btn.btn-a.inactive,
+body.tutorial-controlling .abxy-btn.btn-b.inactive {
+  pointer-events: auto;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
 /* Y top-center, X mid-left, B mid-right, A bottom-center */
 .btn-y { --btn-color: #9ed6a0; --btn-border: #2e6b39; grid-column: 2; grid-row: 1; }
 .btn-x { --btn-color: #8fb3e8; --btn-border: #1f3b73; grid-column: 1; grid-row: 2; }
@@ -696,6 +741,111 @@ body {
   color: rgba(255,255,255,0.4);
   font-weight: 700;
   letter-spacing: 0.06em;
+}
+
+/* How-to-play book badge — persistent overlay like #ingame-back-btn, shown
+   only to the one drawn player controlling the picture book, layered on
+   top of their normal (held) game controls underneath. */
+#tutorial-controller-badge {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 18px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid #ffd000;
+  border-radius: 16px;
+  z-index: 8000;
+  text-align: center;
+  pointer-events: none; /* real paging happens via the game's own A/B buttons underneath */
+}
+
+#tutorial-controller-badge p {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffe555;
+}
+
+#tutorial-controller-page {
+  font-size: 0.95rem !important;
+  color: #fff !important;
+}
+
+/* ── PREP (賽前準備) ── */
+#prep-waiting, #prep-ready-pending, #prep-ready-done, #prep-watching {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.prep-drawn-text {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #ffe555;
+  text-shadow: 0 0 12px rgba(255, 220, 0, 0.6);
+}
+
+/* Host-only override panel — persistent overlay like #ingame-back-btn,
+   layered on top of whichever of the 4 views above the host also sees. */
+#prep-host-panel {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  width: min(90vw, 360px);
+  background: linear-gradient(180deg, #fffdf6 0%, #f3e2be 100%);
+  border: 3px solid #2b2015;
+  border-radius: 16px;
+  box-shadow: 0 6px 0 rgba(43, 32, 21, 0.45), 0 10px 24px rgba(0, 0, 0, 0.5);
+  z-index: 8000;
+}
+
+#prep-roster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+.prep-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 4px;
+}
+
+.prep-panel-name {
+  font-weight: 800;
+  color: #4a2f18;
+  font-size: 0.9rem;
+}
+
+.prep-redraw-btn {
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.prep-redraw-btn:disabled {
+  filter: grayscale(0.85) brightness(0.92);
+  opacity: 0.45;
+  cursor: default;
 }
 
 /* ── "你上場了！" Notification ── */
