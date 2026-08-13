@@ -6,9 +6,7 @@
  * Game ends when a player reaches 4 points (score > 3).
  */
 import { truncateName } from '../../shared/nameDisplay.js';
-import { createLoopingBgm } from '../../shared/loopingBgm.js';
-
-const bgm = createLoopingBgm('03_pong/pong_bgm.mp3');
+import { bgm, SFX } from './audio.js';
 
 const WIN_SCORE = 4;
 const BALL_SPEED_INIT = 50;  // logical units / sec
@@ -108,6 +106,7 @@ function applyPowerup(pu, globalState) {
 
   pg.scoreMsg = `${ownerName} ${pu.emoji} ${pu.label}！`;
   pg.scoreMsgTimer = 1.5;
+  SFX.ding();
 }
 
 // Recompute paddle heights from base + whatever timed effects are running
@@ -136,14 +135,9 @@ export default {
   cover: '03_pong/pong_cover.png',
 
   tutorial: {
-    goal: '用板子把球擋回去，球穿過對手底線就得分，先拿下 4 分獲勝！',
-    controls: [
-      { key: '🕹️', text: '上下移動板子' },
-    ],
-    tips: [
-      '場中央會出現道具，讓球輾過去就生效（算最後擊球那方的）',
-      '⚡ 球速提升　🐌 球速減慢　🔻 縮小對手板子　💪 自己板子變大',
-      '每次來回擊球，球速都會越來越快，越後面越刺激！',
+    pages: [
+      '03_pong/tutorial/1.png',
+      '03_pong/tutorial/2.png',
     ],
   },
 
@@ -228,6 +222,7 @@ export default {
       pg.rallySpeed = Math.min(pg.rallySpeed * BALL_SPEED_STEP, BALL_SPEED_MAX);
       rescaleBallSpeed();
       pg.lastHitter = 0;
+      SFX.hit();
     }
 
     // Right paddle bounce
@@ -242,6 +237,7 @@ export default {
       pg.rallySpeed = Math.min(pg.rallySpeed * BALL_SPEED_STEP, BALL_SPEED_MAX);
       rescaleBallSpeed();
       pg.lastHitter = 1;
+      SFX.hit();
     }
 
     // Power-up pickup — the ball itself collects; credit goes to whoever

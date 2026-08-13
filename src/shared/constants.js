@@ -15,8 +15,7 @@ export const MSG = {
   PREP_READY:       'prep_ready',        // drawn player taps 準備 (no payload — deviceId is the sender)
   PREP_FORCE_START: 'prep_force_start',  // host only, honored only once STATE_KEY.PREP_UNLOCKED is true
   PREP_REDRAW:      'prep_redraw',       // host only: { type, targetId } — targetId = drawn-but-not-ready player to replace
-  TUTORIAL_NEXT:    'tutorial_next',     // designated tutorial controller only: advance the picture book (or start the match on the last page)
-  TUTORIAL_PREV:    'tutorial_prev',     // designated tutorial controller only: go back a page (no-op on page 1)
+  TUTORIAL_READY:   'tutorial_ready',    // a playing device finished flipping through its own copy of the how-to-play book (no payload — deviceId is the sender)
 };
 
 // Game phases
@@ -45,9 +44,8 @@ export const STATE_KEY = {
   SFX_VOLUME:     'sfxVolume',       // 0..1 — button-SFX loudness for all controllers
   PREP_READY:     'prepReady',       // { [deviceId]: true } — drawn players who've tapped 準備
   PREP_UNLOCKED:  'prepUnlocked',    // boolean — true once the 20s grace period has elapsed with stragglers left
-  TUTORIAL_PAGE:       'tutorialPage',      // number — current 0-indexed page of the how-to-play picture book
-  TUTORIAL_PAGE_COUNT: 'tutorialPageCount', // number — total pages; 0 means no paged tutorial is active right now
-  TUTORIAL_CONTROLLER: 'tutorialController', // deviceId (string) | null — the one drawn player whose A/B flips pages
+  TUTORIAL_PAGES: 'tutorialPages',   // array of image paths | null — each playing device browses its own copy at its own pace; empty/null means no paged tutorial is active right now
+  TUTORIAL_READY: 'tutorialReady',   // { [deviceId]: true } — playing devices who've finished their own copy
 };
 
 // PREP phase timing (src/screen/main.js), shared so the controller's own
@@ -55,9 +53,10 @@ export const STATE_KEY = {
 export const PREP_REEL_DURATION_MS = 2400;   // CSS transition-duration for the reel scroll
 export const PREP_READY_TIMEOUT_MS = 20000;  // grace period before host override buttons unlock
 
-// How-to-play picture book (src/screen/main.js) — safety net so the party
-// doesn't stall forever if nobody presses A/B.
-export const TUTORIAL_PAGE_AUTO_MS = 30000;  // per page before auto-advance; last page auto-starts the match
+// How-to-play picture book (src/screen/main.js) — each playing device reads
+// its own copy at its own pace; this is the safety net so the party doesn't
+// stall forever waiting on someone who never dismisses their reader.
+export const TUTORIAL_READY_TIMEOUT_MS = 45000;
 
 export const MAX_PLAYERS = 20;
 

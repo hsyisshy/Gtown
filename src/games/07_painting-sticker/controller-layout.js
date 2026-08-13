@@ -1,27 +1,26 @@
-import { createDpad } from '../../controller/dpad.js';
+import { createJoystick } from '../../controller/joystick.js';
 
-let dpad = null;
+let _joystick = null;
 let cleanup = [];
 
 export function mount(root, sendFn) {
   root.innerHTML = `
     <div class="gamepad-layout">
-      <div class="gamepad-left">
-        <div id="dpad-container"></div>
-      </div>
+      <div class="gamepad-left"></div>
       <div class="gamepad-right">
         <div class="abxy-buttons">
           <button class="abxy-btn btn-y inactive">Y</button>
           <button class="abxy-btn btn-x inactive">X</button>
-          <button class="abxy-btn btn-b" data-action="grab">抓取／放下</button>
-          <button class="abxy-btn btn-a" data-action="finish">提早完成</button>
+          <button class="abxy-btn btn-b" data-action="grab">B</button>
+          <button class="abxy-btn btn-a" data-action="finish">A</button>
         </div>
       </div>
     </div>
   `;
 
-  dpad = createDpad(
-    root.querySelector('#dpad-container'),
+  // 自由 2D 移動游標 — 不鎖軸
+  _joystick = createJoystick(
+    root.querySelector('.gamepad-layout'),
     ({ dx, dy }) => sendFn({ action: 'move', dx, dy }),
   );
 
@@ -46,8 +45,8 @@ export function mount(root, sendFn) {
 }
 
 export function unmount() {
-  dpad?.destroy();
-  dpad = null;
+  _joystick?.destroy();
+  _joystick = null;
   cleanup.forEach(fn => fn());
   cleanup = [];
 }

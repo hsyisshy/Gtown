@@ -1,7 +1,7 @@
 import './style.css';
 import { StateMachine } from '../shared/state-machine.js';
 import { cappedDt } from '../shared/airconsole-wrapper.js';
-import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_PAGE_AUTO_MS } from '../shared/constants.js';
+import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_READY_TIMEOUT_MS } from '../shared/constants.js';
 import { GAMES, UPCOMING_GAMES, getGame, getGameList } from '../games/registry.js';
 import { fillMissingTeams, toggleTeam, teamCounts } from '../shared/teams.js';
 
@@ -27,6 +27,8 @@ const state = {
   initialized: false,
   currentGame: null,
   tutorialActive: false, // how-to-play card is up — game updates/inputs hold
+  tutorialPages: null,   // array of image paths | null — broadcast so every playing device can browse its own copy
+  tutorialReady: {},     // { [deviceId]: true } — playing devices who've finished their own copy
   hostId: null,          // deviceId of the current host — transferable via
                          // request/approve; falls back to AirConsole's master
 };
@@ -402,17 +404,9 @@ airconsole.onMessage = function (deviceId, data) {
       break;
     }
 
-    case MSG.TUTORIAL_NEXT: {
-      if (!sm.is(PHASE.PLAYING) || !_tutorialPages) return;
-      if (String(deviceId) !== _tutorialControllerId) return;
-      tutorialPageNext();
-      break;
-    }
-
-    case MSG.TUTORIAL_PREV: {
-      if (!sm.is(PHASE.PLAYING) || !_tutorialPages) return;
-      if (String(deviceId) !== _tutorialControllerId) return;
-      tutorialPagePrev();
+    case MSG.TUTORIAL_READY: {
+      if (!sm.is(PHASE.PLAYING)) return;
+      handleTutorialReady(deviceId);
       break;
     }
 
@@ -537,6 +531,8 @@ function broadcastState() {
   airconsole.setCustomDeviceStateProperty(STATE_KEY.SELECTED_MAP, state.selectedMap);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.PREP_READY, state.prepReady);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.PREP_UNLOCKED, state.prepUnlocked);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PAGES, state.tutorialPages);
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_READY, state.tutorialReady);
   airconsole.setCustomDeviceStateProperty(STATE_KEY.SCORES,
     Object.entries(state.players).reduce((acc, [id, p]) => {
       acc[id] = p.score;
@@ -850,8 +846,9 @@ function renderPrepRoster() {
 // running (its BGM plays under the card) but update()/onInput() hold until
 // the card is dismissed. Two formats, picked by whether the game defines
 // tutorial.pages: the original text/single-comic card (mouse 開始！ or an
-// auto-start countdown), or a flip-through picture book driven by anyone's
-// controller A/B (see MSG.TUTORIAL_NEXT/PREV below).
+// auto-start countdown), or a flip-through picture book that every playing
+// device browses independently on its own phone (see the roster section
+// below).
 // ---------------------------------------------------------------------------
 const TUTORIAL_SECONDS = 15;
 const tutorialOverlay    = document.getElementById('tutorial-overlay');
@@ -859,10 +856,8 @@ const tutorialClassicEl  = document.getElementById('tutorial-classic');
 const tutorialStartBtn   = document.getElementById('tutorial-start-btn');
 const tutorialCountdown  = document.getElementById('tutorial-countdown');
 const tutorialPagedEl    = document.getElementById('tutorial-paged');
-const tutorialPageImg    = document.getElementById('tutorial-page-img');
-const tutorialPageCounter = document.getElementById('tutorial-page-counter');
-const tutorialPagePrevBtn = document.getElementById('tutorial-page-prev');
-const tutorialPageNextBtn = document.getElementById('tutorial-page-next');
+const tutorialRosterEl   = document.getElementById('tutorial-roster');
+const tutorialRosterCountdownEl = document.getElementById('tutorial-roster-countdown');
 let _tutorialTimer = null;
 
 function showTutorial(game) {
@@ -875,7 +870,7 @@ function showTutorial(game) {
     tutorialClassicEl.classList.add('hidden');
     tutorialPagedEl.classList.remove('hidden');
     tutorialOverlay.classList.remove('hidden');
-    startTutorialPages(tut.pages);
+    startTutorialRoster(tut.pages);
     return;
   }
 
@@ -921,14 +916,15 @@ function showTutorial(game) {
 function hideTutorial() {
   clearInterval(_tutorialTimer);
   _tutorialTimer = null;
-  const wasPaged = !!_tutorialPages;
-  clearTimeout(_tutorialPageTimer);
-  _tutorialPageTimer = null;
-  _tutorialPages = null;
-  _tutorialControllerId = null;
+  clearTimeout(_tutorialReadyTimer);
+  _tutorialReadyTimer = null;
+  clearInterval(_tutorialCountdownInterval);
+  _tutorialCountdownInterval = null;
+  state.tutorialPages = null;
+  state.tutorialReady = {};
   tutorialOverlay.classList.add('hidden');
   state.tutorialActive = false;
-  if (wasPaged) broadcastTutorialPage(); // tells controllers the paging UI is gone (count → 0)
+  broadcastState(); // tells controllers the paging UI is gone (pages → null)
 }
 
 tutorialStartBtn.addEventListener('click', hideTutorial);
@@ -937,76 +933,88 @@ tutorialStartBtn.addEventListener('mouseenter', () => playScreenSfx(hoverSfx));
 tutorialStartBtn.addEventListener('click', () => playScreenSfx(clickSfx));
 
 // ---------------------------------------------------------------------------
-// How-to-play picture book — flip-through pages. Only ONE drawn player (the
-// host if they're playing this round, otherwise whichever drawn player
-// sorts first) controls it, using their own game's real A/B gamepad
-// buttons (src/controller/main.js delegates .btn-a/.btn-b clicks to
-// MSG.TUTORIAL_PREV/NEXT while they're the designated controller — see the
-// comment there for why hijacking the real buttons is safe even though the
-// game's own handler for them may also fire). A click on either side of the
-// image here on the shared screen works too. 30s/page auto-advance safety
-// net so the room can't stall forever if the designated controller is AFK;
-// the last page auto-starts the same way the classic card's countdown does.
+// How-to-play picture book — every playing device flips through its OWN copy
+// at its own pace, using its own game's real A/B gamepad buttons (see
+// src/controller/main.js) — doubles as button practice. Since there's no
+// single synced page anymore, the shared screen shows a ready-roster instead
+// (same idea as the PREP ready check): each playing device reports in via
+// MSG.TUTORIAL_READY once it's flipped through to the end, and the match
+// starts once everyone's in or TUTORIAL_READY_TIMEOUT_MS elapses, whichever
+// comes first.
 // ---------------------------------------------------------------------------
-let _tutorialPages = null;
-let _tutorialPageIndex = 0;
-let _tutorialPageTimer = null;
-let _tutorialControllerId = null;
+let _tutorialReadyTimer = null;
+let _tutorialCountdownInterval = null;
 
-function pickTutorialController() {
-  const playingIds = Object.entries(state.activePlayers)
+function startTutorialRoster(pages) {
+  state.tutorialPages = pages;
+  state.tutorialReady = {};
+  broadcastState();
+  renderTutorialRoster();
+
+  if (tutorialPlayingIds().length === 0) { hideTutorial(); return; } // nobody to wait on
+
+  clearTimeout(_tutorialReadyTimer);
+  _tutorialReadyTimer = setTimeout(() => {
+    if (!state.tutorialActive) return;
+    hideTutorial();
+  }, TUTORIAL_READY_TIMEOUT_MS);
+
+  startTutorialReadyCountdown(TUTORIAL_READY_TIMEOUT_MS / 1000);
+}
+
+function tutorialPlayingIds() {
+  return Object.entries(state.activePlayers)
     .filter(([, role]) => role === 'playing')
     .map(([id]) => id);
-  if (!playingIds.length) return null;
-  const hostId = String(getHostId());
-  return playingIds.includes(hostId) ? hostId : playingIds[0];
 }
 
-function startTutorialPages(pages) {
-  _tutorialPages = pages;
-  _tutorialPageIndex = 0;
-  _tutorialControllerId = pickTutorialController();
-  renderTutorialPage();
+function allTutorialPlayersReady() {
+  const ids = tutorialPlayingIds();
+  return ids.length === 0 || ids.every(id => state.tutorialReady[id]);
 }
 
-function renderTutorialPage() {
-  tutorialPageImg.src = _tutorialPages[_tutorialPageIndex];
-  tutorialPageCounter.textContent = `${_tutorialPageIndex + 1} / ${_tutorialPages.length}`;
-  tutorialPagePrevBtn.disabled = _tutorialPageIndex === 0;
-  broadcastTutorialPage();
-
-  clearTimeout(_tutorialPageTimer);
-  _tutorialPageTimer = setTimeout(tutorialPageNext, TUTORIAL_PAGE_AUTO_MS);
+function renderTutorialRoster() {
+  tutorialRosterEl.innerHTML = '';
+  tutorialPlayingIds().forEach(id => {
+    const ready = !!state.tutorialReady[id];
+    const team = state.teams[id] ?? 'red';
+    const row = document.createElement('div');
+    row.className = 'prep-roster-row' + (ready ? ' ready' : '');
+    row.innerHTML = `
+      <span class="prep-roster-dot ${team}"></span>
+      <span class="prep-roster-name">${state.players[id]?.name ?? '???'}</span>
+      <span class="prep-roster-status">${ready ? '✅ 看完了' : '📖 閱讀中…'}</span>
+    `;
+    tutorialRosterEl.appendChild(row);
+  });
 }
 
-function tutorialPageNext() {
-  if (!_tutorialPages) return;
-  if (_tutorialPageIndex >= _tutorialPages.length - 1) {
-    hideTutorial();
-    return;
-  }
-  _tutorialPageIndex += 1;
-  playScreenSfx(hoverSfx);
-  renderTutorialPage();
+function handleTutorialReady(deviceId) {
+  if (!state.tutorialPages?.length) return;
+  const id = String(deviceId);
+  if ((state.activePlayers ?? {})[id] !== 'playing') return;
+  state.tutorialReady[id] = true;
+  broadcastState();
+  renderTutorialRoster();
+  if (allTutorialPlayersReady()) hideTutorial();
 }
 
-function tutorialPagePrev() {
-  if (!_tutorialPages || _tutorialPageIndex === 0) return;
-  _tutorialPageIndex -= 1;
-  playScreenSfx(hoverSfx);
-  renderTutorialPage();
+function startTutorialReadyCountdown(seconds) {
+  clearInterval(_tutorialCountdownInterval);
+  let remaining = seconds;
+  const tick = () => {
+    if (!state.tutorialActive || allTutorialPlayersReady()) {
+      clearInterval(_tutorialCountdownInterval);
+      tutorialRosterCountdownEl.classList.add('hidden');
+      return;
+    }
+    tutorialRosterCountdownEl.classList.remove('hidden');
+    tutorialRosterCountdownEl.textContent = `⏳ 還有 ${Math.max(0, remaining)} 秒，時間到會自動開始比賽`;
+    remaining -= 1;
+  };
+  tick();
+  _tutorialCountdownInterval = setInterval(tick, 1000);
 }
-
-function broadcastTutorialPage() {
-  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PAGE_COUNT, _tutorialPages?.length ?? 0);
-  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PAGE, _tutorialPageIndex);
-  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_CONTROLLER, _tutorialControllerId);
-}
-
-// tutorialPageNext()/Prev() already play their own SFX (shared with the
-// MSG.TUTORIAL_NEXT/PREV path below) — the click handlers just trigger them.
-tutorialPageNextBtn.addEventListener('click', tutorialPageNext);
-tutorialPagePrevBtn.addEventListener('click', tutorialPagePrev);
 
 function endGame(winnerTeam) {
   // Games report their winner explicitly; anything else counts as a draw

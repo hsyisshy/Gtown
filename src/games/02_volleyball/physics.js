@@ -3,6 +3,7 @@ import {
   GRAVITY_BASE, PLAYER_GRAVITY, PLAYER_SPEED, BALL_R,
   PLAYER_W, PLAYER_H, HIT_RADIUS, HIT_WINDOW, HIT_COOLDOWN,
 } from './constants.js';
+import { SFX } from './audio.js';
 
 export function updatePhysics(dt, vbState) {
   updatePlayers(dt, vbState);
@@ -178,6 +179,7 @@ function checkHits(vbState) {
         p.hitPressedAt = null;
         p.hitTimer = 0.25;
         if (vbState.phase === 'serving') vbState.phase = 'rally';
+        SFX.slap();
         // Queue feedback to send to controller
         if (!vbState._hitFeedbacks) vbState._hitFeedbacks = [];
         vbState._hitFeedbacks.push(p.deviceId);
@@ -221,6 +223,7 @@ function checkBodyCollision(vbState) {
         // arms-up pose forever after a passive bump and stops animating.
         p.hitTimer = 0.25;
         if (vbState.phase === 'serving') vbState.phase = 'rally';
+        SFX.slap();
       }
     }
   }

@@ -21,9 +21,8 @@ const state = {
   teamScores:    { red: 0, blue: 0 },
   prepReady:     {},            // { [deviceId]: true } — from STATE_KEY.PREP_READY
   prepUnlocked:  false,         // from STATE_KEY.PREP_UNLOCKED
-  tutorialPage:      0,         // from STATE_KEY.TUTORIAL_PAGE
-  tutorialPageCount: 0,         // from STATE_KEY.TUTORIAL_PAGE_COUNT — 0 means no paged tutorial active
-  tutorialControllerId: null,   // from STATE_KEY.TUTORIAL_CONTROLLER — deviceId (string) of the one player flipping pages
+  tutorialPages: [],            // from STATE_KEY.TUTORIAL_PAGES — image paths; empty means no paged tutorial active
+  tutorialReady: {},            // from STATE_KEY.TUTORIAL_READY — { [deviceId]: true }
   _prevMyRole:   null,          // track my previous playing/watching role
   _activeLayoutGameId: null,    // gameId the mounted controller-layout belongs to
   _lastSent:     {},
@@ -248,16 +247,19 @@ airconsole.onCustomDeviceStateChange = function (deviceId, customData) {
     state.prepUnlocked = customData[STATE_KEY.PREP_UNLOCKED];
   }
 
-  if (customData[STATE_KEY.TUTORIAL_PAGE] !== undefined) {
-    state.tutorialPage = customData[STATE_KEY.TUTORIAL_PAGE];
+  if (customData[STATE_KEY.TUTORIAL_PAGES] !== undefined) {
+    const pages = customData[STATE_KEY.TUTORIAL_PAGES];
+    // Reset MY OWN reading position only when a tutorial session is actually
+    // starting (empty/none → non-empty) — NOT every time this re-broadcasts
+    // unchanged during the same session (e.g. another player tapping ready),
+    // which would otherwise yank everyone back to page 1 mid-read.
+    const startingNewSession = !(state.tutorialPages?.length) && pages?.length;
+    state.tutorialPages = pages ?? [];
+    if (startingNewSession) _tutorialLocalPage = 0;
   }
 
-  if (customData[STATE_KEY.TUTORIAL_PAGE_COUNT] !== undefined) {
-    state.tutorialPageCount = customData[STATE_KEY.TUTORIAL_PAGE_COUNT];
-  }
-
-  if (customData[STATE_KEY.TUTORIAL_CONTROLLER] !== undefined) {
-    state.tutorialControllerId = customData[STATE_KEY.TUTORIAL_CONTROLLER];
+  if (customData[STATE_KEY.TUTORIAL_READY] !== undefined) {
+    state.tutorialReady = customData[STATE_KEY.TUTORIAL_READY];
   }
 
   if (customData[STATE_KEY.SFX_VOLUME] !== undefined) {
@@ -416,43 +418,70 @@ function refreshUI() {
   prepHostPanel.classList.toggle('hidden', !showPrepPanel);
   if (showPrepPanel) renderPrepHostPanel();
 
-  // How-to-play book badge — persistent overlay like ingameBackBtn, shown
-  // only to the ONE drawn player controlling the picture book, layered on
-  // top of their normal (held) game controls.
-  const showTutorialBadge = phase === PHASE.PLAYING
-    && state.tutorialPageCount > 0 && myId === state.tutorialControllerId;
-  tutorialControllerBadge.classList.toggle('hidden', !showTutorialBadge);
-  if (showTutorialBadge) renderTutorialControllerBadge();
+  // How-to-play book reader — persistent overlay like ingameBackBtn, shown
+  // to EVERY playing device while it's still browsing its own copy, layered
+  // on top of its normal (held) game controls. Once this device has sent
+  // TUTORIAL_READY, swap to the compact "waiting on others" badge instead.
+  const tutorialPagesActive = phase === PHASE.PLAYING && (state.tutorialPages?.length ?? 0) > 0;
+  const iAmReadingTutorial  = tutorialPagesActive && myRole === 'playing' && !state.tutorialReady[myId];
+  const iAmWaitingOnOthers  = tutorialPagesActive && myRole === 'playing' && !!state.tutorialReady[myId];
+
+  tutorialReaderEl.classList.toggle('hidden', !iAmReadingTutorial);
+  if (iAmReadingTutorial) renderTutorialReader();
+  tutorialWaitingEl.classList.toggle('hidden', !iAmWaitingOnOthers);
   // Re-enables this game's normally-inactive A/B buttons (see .abxy-btn.inactive
-  // override in style.css) so the designated controller can actually tap them.
-  document.body.classList.toggle('tutorial-controlling', showTutorialBadge);
+  // override in style.css) so this device can actually tap them to flip pages.
+  document.body.classList.toggle('tutorial-controlling', iAmReadingTutorial);
 
   renderTeamBadges();
 }
 
 // ---------------------------------------------------------------------------
-// How-to-play picture book — only the designated controller (see
-// STATE_KEY.TUTORIAL_CONTROLLER) can flip pages, using their own game's
-// real A/B gamepad buttons (.abxy-btn.btn-a/.btn-b — every controller-layout
-// renders these, active or not). Delegated on document so it works no
-// matter which game's layout is mounted underneath. The game's own handler
-// for these buttons (if any) may also fire — harmless, since gameplay
-// input is already dropped screen-side while a tutorial is active.
+// How-to-play picture book — every playing device flips through its OWN
+// copy at its own pace, using its own game's real A/B gamepad buttons
+// (.abxy-btn.btn-a/.btn-b — every controller-layout renders these, active
+// or not). Delegated on document so it works no matter which game's layout
+// is mounted underneath. The game's own handler for these buttons (if any)
+// may also fire — harmless, since gameplay input is already dropped
+// screen-side while a tutorial is active. Reading position is purely local
+// (never synced) — only the "I finished" signal (MSG.TUTORIAL_READY) goes
+// to the screen, which then shows a ready-roster instead of one synced page.
 // ---------------------------------------------------------------------------
-const tutorialControllerBadge = document.getElementById('tutorial-controller-badge');
-const tutorialControllerPage  = document.getElementById('tutorial-controller-page');
+const tutorialReaderEl      = document.getElementById('tutorial-reader');
+const tutorialReaderImg     = document.getElementById('tutorial-reader-img');
+const tutorialReaderCounter = document.getElementById('tutorial-reader-counter');
+const tutorialReaderHint    = document.getElementById('tutorial-reader-hint');
+const tutorialWaitingEl     = document.getElementById('tutorial-waiting');
+let _tutorialLocalPage = 0;
 
-function renderTutorialControllerBadge() {
-  tutorialControllerPage.textContent = `${(state.tutorialPage ?? 0) + 1} / ${state.tutorialPageCount ?? 0}`;
+function renderTutorialReader() {
+  const pages = state.tutorialPages;
+  if (!pages?.length) return;
+  const idx = Math.min(_tutorialLocalPage, pages.length - 1);
+  tutorialReaderImg.src = pages[idx];
+  tutorialReaderCounter.textContent = `${idx + 1} / ${pages.length}`;
+  const isLast = idx === pages.length - 1;
+  tutorialReaderHint.textContent = isLast ? '🅰️ 上一頁　🅱️ 開始！' : '🅰️ 上一頁　🅱️ 下一頁';
 }
 
 document.addEventListener('click', e => {
-  if (state.tutorialPageCount <= 0) return;
-  if (String(airconsole.getDeviceId()) !== state.tutorialControllerId) return;
+  const pages = state.tutorialPages;
+  if (!pages?.length) return;
+  const myId = String(airconsole.getDeviceId());
+  if (state.tutorialReady[myId]) return; // already dismissed my own reader
   const btn = e.target.closest?.('.abxy-btn.btn-a, .abxy-btn.btn-b');
   if (!btn) return;
-  const type = btn.classList.contains('btn-b') ? MSG.TUTORIAL_NEXT : MSG.TUTORIAL_PREV;
-  airconsole.message(AirConsole.SCREEN, { type });
+
+  if (btn.classList.contains('btn-b')) {
+    if (_tutorialLocalPage >= pages.length - 1) {
+      airconsole.message(AirConsole.SCREEN, { type: MSG.TUTORIAL_READY });
+      return;
+    }
+    _tutorialLocalPage += 1;
+  } else if (_tutorialLocalPage > 0) {
+    _tutorialLocalPage -= 1;
+  }
+  renderTutorialReader();
 });
 
 // ---------------------------------------------------------------------------

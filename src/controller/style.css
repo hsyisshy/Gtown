@@ -503,59 +503,6 @@ body {
   box-shadow: 0 4px 8px rgba(20, 30, 60, 0.3);
 }
 
-/* ── D-pad ── */
-.dpad-buttons {
-  display: grid;
-  grid-template-columns: repeat(3, var(--btn-size));
-  grid-template-rows: repeat(3, var(--btn-size));
-  gap: var(--btn-gap);
-}
-
-.dpad-btn {
-  --btn-color: #8fb3e8;
-  --btn-border: #1f3b73;
-  background: linear-gradient(160deg, color-mix(in srgb, var(--btn-color) 60%, #fff) 0%, var(--btn-color) 55%, color-mix(in srgb, var(--btn-color) 80%, #000) 100%);
-  border: clamp(2px, calc(var(--lh) * 0.012), 4px) solid var(--btn-border);
-  border-radius: 30%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 5px 0 var(--btn-border), 0 8px 14px rgba(20, 30, 60, 0.25);
-  transition: transform 0.06s, box-shadow 0.06s;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-.dpad-btn:active, .dpad-btn.pressed {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 var(--btn-border), 0 2px 6px rgba(20, 30, 60, 0.25);
-}
-.dpad-btn.inactive {
-  opacity: 0.28;
-  cursor: default;
-  pointer-events: none;
-}
-
-.dpad-up    { grid-column: 2; grid-row: 1; }
-.dpad-left  { grid-column: 1; grid-row: 2; }
-.dpad-right { grid-column: 3; grid-row: 2; }
-.dpad-down  { grid-column: 2; grid-row: 3; }
-
-.dpad-chevron {
-  width: 46%;
-  height: 46%;
-  fill: none;
-  stroke: #fff;
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 1px 0 rgba(0,0,0,0.15));
-}
-.dpad-down  > .dpad-chevron { transform: rotate(180deg); }
-.dpad-left  > .dpad-chevron { transform: rotate(-90deg); }
-.dpad-right > .dpad-chevron { transform: rotate(90deg); }
-
 /* ── ABXY diamond ── */
 .abxy-buttons {
   display: grid;
@@ -593,7 +540,7 @@ body {
   pointer-events: none;
 }
 
-/* While this device is the designated tutorial-book controller, re-enable
+/* While this device is still browsing its own tutorial-book copy, re-enable
    whichever of A/B this game normally leaves inactive (e.g. hospital uses
    neither) so they can actually be tapped to flip pages. */
 body.tutorial-controlling .abxy-btn.btn-a.inactive,
@@ -743,20 +690,22 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   letter-spacing: 0.06em;
 }
 
-/* How-to-play book badge — persistent overlay like #ingame-back-btn, shown
-   only to the one drawn player controlling the picture book, layered on
-   top of their normal (held) game controls underneath. */
-#tutorial-controller-badge {
+/* How-to-play book reader — persistent overlay like #ingame-back-btn, shown
+   to EVERY playing device while it's still browsing its own copy, layered
+   on top of the normal (held) game controls underneath so their real A/B
+   buttons stay tappable through it. */
+#tutorial-reader {
   position: fixed;
-  top: 8px;
+  top: 6px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 18px;
-  background: rgba(0, 0, 0, 0.7);
+  gap: 4px;
+  width: min(92vw, 420px);
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.78);
   border: 2px solid #ffd000;
   border-radius: 16px;
   z-index: 8000;
@@ -764,16 +713,51 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   pointer-events: none; /* real paging happens via the game's own A/B buttons underneath */
 }
 
-#tutorial-controller-badge p {
+#tutorial-reader p {
   margin: 0;
   font-size: 0.75rem;
   font-weight: 800;
   color: #ffe555;
 }
 
-#tutorial-controller-page {
+#tutorial-reader-img {
+  display: block;
+  width: 100%;
+  max-height: 38vh;
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+#tutorial-reader-counter {
   font-size: 0.95rem !important;
   color: #fff !important;
+}
+
+#tutorial-reader-hint {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-weight: 700 !important;
+}
+
+/* Compact "done, waiting on others" badge — same treatment, shown once this
+   device has reported ready but the room overall hasn't moved on yet. */
+#tutorial-waiting {
+  position: fixed;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  background: rgba(0, 0, 0, 0.7);
+  border: 2px solid #2f7d32;
+  border-radius: 16px;
+  z-index: 8000;
+  pointer-events: none;
+}
+
+#tutorial-waiting p {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: #8be89b;
 }
 
 /* ── PREP (賽前準備) ── */

@@ -86,9 +86,10 @@
        dismissed. Two mutually-exclusive layouts inside the same panel:
        #tutorial-classic (text goal/controls/tips, or one comic image, with
        a click-to-start button + auto-start countdown) is the original
-       format most games still use; #tutorial-paged (a flip-through
-       how-to-play picture book, driven by controller A/B) is the newer
-       format for games with a tutorial.pages array. -->
+       format most games still use; #tutorial-paged (a ready-roster — every
+       playing device flips through its own copy of the how-to-play picture
+       book independently on its own phone) is the newer format for games
+       with a tutorial.pages array. -->
   <div id="tutorial-overlay" class="hidden">
     <div id="tutorial-panel">
       <h2 id="tutorial-title"></h2>
@@ -112,13 +113,9 @@
       </div>
 
       <div id="tutorial-paged" class="hidden">
-        <div id="tutorial-page-viewport">
-          <button id="tutorial-page-prev" class="tutorial-page-zone" aria-label="上一頁"></button>
-          <img id="tutorial-page-img" alt="教學圖說" />
-          <button id="tutorial-page-next" class="tutorial-page-zone" aria-label="下一頁"></button>
-        </div>
-        <p id="tutorial-page-counter"></p>
-        <p class="tutorial-page-hint">🅱️ 下一頁　🅰️ 上一頁</p>
+        <p class="tutorial-roster-hint">📱 教學漫畫在大家自己的手機上，翻到最後一頁按 Ⓑ 準備開始！</p>
+        <div id="tutorial-roster"></div>
+        <p id="tutorial-roster-countdown" class="hidden"></p>
       </div>
     </div>
   </div>

@@ -429,17 +429,10 @@ export default {
   cover: '05_furniture-stack/theme/furniture_cover.png',
 
   tutorial: {
-    goal: '紅藍隊輪流堆家具，誰讓家具掉出平台就輸掉該局，先贏兩局獲勝！',
-    controls: [
-      { key: '⬅➡', text: '左右移動家具' },
-      { key: '↺ ↻', text: '雙向旋轉，可停在任意角度' },
-      { key: '換物件', text: '換一件家具（每隊每局 3 次）' },
-      { key: '放下', text: '放下家具，12 秒內沒放會自動放下' },
-    ],
-    tips: [
-      '每次交棒先轉 1／2／3 轉盤，轉到幾就連續放幾件',
-      '停穩的家具被撞到還是會再動，小心連鎖倒塌',
-      '成功放下第 24 件家具，直接拿下該局！',
+    pages: [
+      '05_furniture-stack/tutorial/1.png',
+      '05_furniture-stack/tutorial/2.png',
+      '05_furniture-stack/tutorial/3.png',
     ],
   },
 

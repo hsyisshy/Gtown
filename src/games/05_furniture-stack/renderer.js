@@ -669,7 +669,11 @@ function drawOverlay(ctx, state) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = INK;
-  const title = state.phase === 'match-over'
+  // 用比分判斷比賽是否已經決定,而不是只看 state.phase —— 這一局結束的當下
+  // phase 還是 'round-over'(要等 roundPauseSeconds 跑完才會變 'match-over'),
+  // 但如果這局的贏家已經達到 roundsToWin,比賽其實已經結束了,文字要跟著對。
+  const matchDecided = state.scores[state.roundWinner] >= GAME_RULES.roundsToWin;
+  const title = matchDecided
     ? `${winner.label}贏得比賽！`
     : `${winner.label}拿下一局！`;
   setFittedFont(ctx, title, 650, 58, 42);
@@ -683,7 +687,7 @@ function drawOverlay(ctx, state) {
   ctx.font = "800 20px 'Noto Sans TC', sans-serif";
   ctx.fillStyle = 'rgba(42,29,25,0.6)';
   ctx.fillText(
-    state.phase === 'match-over' ? '即將回到大廳結算' : '下一局交換先手',
+    matchDecided ? '即將回到大廳結算' : '下一局交換先手',
     WORLD_W / 2,
     513,
   );

@@ -1,36 +1,36 @@
 /**
  * 農場卡車大亂鬥 — ported from truck_animal-main/index.html
  *
- * Red vs blue, up to 2 trucks per team (playersPerTeam: 2); short teams are
- * filled with AI trucks so both sides always field 2 and the arena stays busy.
+ * Red vs blue, up to 3 trucks per team (playersPerTeam: 3); short teams are
+ * filled with AI trucks so both sides always field 3 and the arena stays busy.
  *
  * Controls (one button): hold A to dash straight ahead, release to spin in
  * place hunting for a direction — the prototype's spin-dash player mode.
  *
  * Physics runs in a fixed logical space (1600x900) so tuning is independent
  * of the screen resolution; draw() uniform-scales + letterboxes into the
- * actual canvas.
+ * actual canvas. The arena ellipse itself is shrunk well inside that space
+ * (see ARENA below) and trucks/animals drawn oversized relative to it, so
+ * 3v3 stays cramped and collision-heavy instead of just scaling up 2v2.
  */
 import { truncateName } from '../../shared/nameDisplay.js';
 import { TEAM_COLOR } from '../../shared/constants.js';
-import { createLoopingBgm } from '../../shared/loopingBgm.js';
-
-const bgm = createLoopingBgm('04_truck/truck_bgm.mp3');
+import { bgm, SFX } from './audio.js';
 
 const LOGICAL_W = 1600, LOGICAL_H = 900;
-const ARENA = { cx: LOGICAL_W / 2, cy: LOGICAL_H / 2, rx: LOGICAL_W / 2 - 30, ry: LOGICAL_H / 2 - 30 };
+const ARENA = { cx: LOGICAL_W / 2, cy: LOGICAL_H / 2, rx: 580, ry: 300 };
 
-const ROUND_TIME = 90;
-const TRUCKS_PER_TEAM = 2;
+const ROUND_TIME = 65;
+const TRUCKS_PER_TEAM = 3;
 
-const TRUCK_W = 52, TRUCK_H = 30, TRUCK_RADIUS = 28;
+const TRUCK_W = 64, TRUCK_H = 37, TRUCK_RADIUS = 34;
 const MAX_SPEED = 320, MAX_REVERSE = 160, ACCEL = 480, DECEL = 340, TURN_RATE = 3.0;
 const SPIN_RATE = 3.6;      // 沒按加速時原地自轉的角速度
 const HIT_COOLDOWN = 0.6;
 const MIN_HIT_DIFF = 90;    // 速度差(或撞牆時的速度)要超過這個值才算「撞到」
 
 const WANDER_SPEED = 55;
-const ANIMAL_DRAW_SIZE = 30;
+const ANIMAL_DRAW_SIZE = 38;
 
 const ANIMAL_IMAGE_NAMES = ['elephant', 'giraffe', 'hippo', 'monkey', 'panda', 'parrot', 'penguin', 'pig', 'rabbit', 'snake'];
 let animalImages = null;
@@ -44,15 +44,19 @@ function loadAnimalImages() {
 }
 
 const arenaBgImg = new Image();
-arenaBgImg.src = '04_truck/truck_arena_bg.png';
+arenaBgImg.src = '04_truck/truck_bg.png';
 
-const TRUCK_DRAW_W = 60; // slightly larger than the old flat-rect footprint (52) — the art reads better a touch bigger
+const TRUCK_DRAW_W = 74; // slightly larger than the flat-rect footprint (64) — the art reads better a touch bigger
 const TRUCK_SPRITES = {
   red: new Image(),
   blue: new Image(),
 };
-TRUCK_SPRITES.red.src = '04_truck/truck_red.png';
-TRUCK_SPRITES.blue.src = '04_truck/truck_blue.png';
+TRUCK_SPRITES.red.src = '04_truck/characters/truck2.png';
+TRUCK_SPRITES.blue.src = '04_truck/characters/truck.png';
+// The new art draws the cab on the left / bed on the right — backwards
+// relative to angle=0 meaning "facing +x" — so flip 180° at draw time
+// rather than re-export mirrored assets.
+const TRUCK_SPRITE_ROTATION = Math.PI;
 
 let tk = null; // module-level game state
 
@@ -188,6 +192,7 @@ function truckMove(t, dt) {
       const n = Math.max(1, Math.round(t.cargo.length * 0.5)); // 撞牆固定掉一半
       ejectAnimals(t, inwardAngle, impactSpeed, 'cone', n);
       t.hitTimer = HIT_COOLDOWN;
+      SFX.crash();
     }
   }
   if (t.hitTimer > 0) t.hitTimer -= dt;
@@ -213,6 +218,7 @@ function handleTruckCollisions() {
 
       const impactSpeed = Math.max(sa, sb);
       const ratio = clamp(diff / MAX_SPEED, 0, 1); // 全速 vs 靜止 = 1 = 全噴
+      SFX.crash();
       if (sa < sb) {
         if (a.cargo.length > 0) ejectAnimals(a, angleAB + Math.PI, impactSpeed, 'full', Math.max(1, Math.round(a.cargo.length * ratio)));
         a.speed = -sa * 0.6;
@@ -291,14 +297,10 @@ export default {
   cover: '04_truck/truck_cover.png',
 
   tutorial: {
-    goal: '90 秒內幫隊伍收集最多動物就獲勝！',
-    controls: [
-      { key: 'Ⓐ 放開', text: '卡車原地旋轉，瞄準想去的方向' },
-      { key: 'Ⓐ 按住', text: '朝目前方向直線衝刺' },
-    ],
-    tips: [
-      '高速衝撞對手卡車，能把牠們車上的動物撞飛出來',
-      '撞飛的動物撿走就是你的——搶收別客氣！',
+    pages: [
+      '04_truck/tutorial/1.png',
+      '04_truck/tutorial/2.png',
+      '04_truck/tutorial/3.png',
     ],
   },
 
@@ -315,12 +317,16 @@ export default {
     const redIds  = ids.filter(id => teams[id] === 'red').slice(0, TRUCKS_PER_TEAM);
     const blueIds = ids.filter(id => teams[id] === 'blue').slice(0, TRUCKS_PER_TEAM);
 
-    // Spawn corners: red team on the left, blue on the right
+    // Spawn corners: red team on the left, blue on the right, each side's
+    // trucks stacked in an evenly-spaced vertical row.
     const { cx, cy, rx, ry } = ARENA;
     const ox = rx * 0.45, oy = ry * 0.5;
+    const spawnRow = (x, angle) => Array.from({ length: TRUCKS_PER_TEAM }, (_, i) => ({
+      x, y: cy - oy + (oy * 2 * i) / (TRUCKS_PER_TEAM - 1), a: angle,
+    }));
     const spawns = {
-      red:  [{ x: cx - ox, y: cy - oy, a: 0 },       { x: cx - ox, y: cy + oy, a: 0 }],
-      blue: [{ x: cx + ox, y: cy - oy, a: Math.PI }, { x: cx + ox, y: cy + oy, a: Math.PI }],
+      red:  spawnRow(cx - ox, 0),
+      blue: spawnRow(cx + ox, Math.PI),
     };
 
     const trucks = [];
@@ -428,13 +434,14 @@ function drawTruck(ctx, t, leaderCargo) {
   const sprite = TRUCK_SPRITES[t.team];
   ctx.save();
   ctx.translate(t.x, t.y);
-  ctx.rotate(t.angle);
   if (sprite.complete && sprite.naturalWidth) {
+    ctx.rotate(t.angle + TRUCK_SPRITE_ROTATION);
     const drawW = TRUCK_DRAW_W;
     const drawH = drawW * (sprite.naturalHeight / sprite.naturalWidth);
     if (t.hitTimer > 0) ctx.filter = 'brightness(1.7) saturate(0.6)';
     ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
   } else {
+    ctx.rotate(t.angle);
     ctx.fillStyle = t.hitTimer > 0 ? '#ffffffaa' : t.color;
     ctx.fillRect(-TRUCK_W / 2, -TRUCK_H / 2, TRUCK_W, TRUCK_H);
     ctx.fillStyle = '#222';

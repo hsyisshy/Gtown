@@ -1076,57 +1076,29 @@ body {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* ── How-to-play picture book (tutorial.pages) ── */
-#tutorial-page-viewport {
-  position: relative;
-  width: 100%;
-  border-radius: 14px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.3);
-}
-
-#tutorial-page-img {
-  display: block;
-  width: 100%;
-  max-height: 64vh;
-  object-fit: contain;
-}
-
-/* Invisible left/right click zones over the image — mouse-friendly parity
-   with the controller's A/B paging, mainly for the host/testing. */
-.tutorial-page-zone {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 30%;
-  background: none;
-  border: none;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-#tutorial-page-prev { left: 0; }
-#tutorial-page-next { right: 0; }
-.tutorial-page-zone:disabled { cursor: default; }
-.tutorial-page-zone:not(:disabled):hover {
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent);
-}
-#tutorial-page-next:not(:disabled):hover {
-  background: linear-gradient(270deg, rgba(255, 255, 255, 0.08), transparent);
-}
-
-#tutorial-page-counter {
-  margin: 12px 0 4px;
-  font-size: 1rem;
-  font-weight: 900;
-  color: #ffd000;
-  letter-spacing: 0.1em;
-}
-
-.tutorial-page-hint {
-  font-size: 0.85rem;
+/* ── How-to-play picture book (tutorial.pages) ──
+   Every playing device browses its own copy on its own phone, so the shared
+   screen shows a ready-roster (same look as #prep-roster) instead of one
+   synced page. */
+.tutorial-roster-hint {
+  margin: 0 0 14px;
+  font-size: 0.95rem;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.55);
-  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+#tutorial-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+#tutorial-roster-countdown {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* ── CLICKABLE GAME / MAP CARDS ──

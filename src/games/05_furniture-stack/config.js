@@ -11,9 +11,9 @@ export const PLATFORM = {
 export const GAME_RULES = {
   turnSeconds: 12,
   diceRollSeconds: 1.55,
-  gravityY: 1.242,
+  gravityY: 2.0,
   shapeChangesPerTeam: 3,
-  roundsToWin: 2,
+  roundsToWin: 1,
   roundPauseSeconds: 2.6,
   matchPauseSeconds: 2.8,
   moveSpeed: 360,

@@ -1,32 +1,26 @@
-let dpad = null;
-let cleanup = [];
+import { createJoystick } from '../../controller/joystick.js';
 
-const DIRECTIONS = [
-  { key: 'up', dx: 0, dy: -1 },
-  { key: 'down', dx: 0, dy: 1 },
-  { key: 'left', dx: -1, dy: 0 },
-  { key: 'right', dx: 1, dy: 0 },
-];
+let _joystick = null;
+let cleanup = [];
 
 export function mount(root, sendFn) {
   root.innerHTML = `
     <div class="gamepad-layout">
-      <div class="gamepad-left">
-        <div id="dpad-container"></div>
-      </div>
+      <div class="gamepad-left"></div>
       <div class="gamepad-right">
         <div class="abxy-buttons">
-          <button class="abxy-btn btn-y" data-action="reroll">換物件</button>
-          <button class="abxy-btn btn-x" data-rotation="-1">↺</button>
-          <button class="abxy-btn btn-b" data-action="b">放下</button>
-          <button class="abxy-btn btn-a" data-rotation="1">↻</button>
+          <button class="abxy-btn btn-y" data-action="reroll">Y</button>
+          <button class="abxy-btn btn-x" data-rotation="-1">X</button>
+          <button class="abxy-btn btn-b" data-action="b">B</button>
+          <button class="abxy-btn btn-a" data-rotation="1">A</button>
         </div>
       </div>
     </div>
   `;
 
-  dpad = createDpad(
-    root.querySelector('#dpad-container'),
+  // 家具高塔只需要左右移動 — 上下軸鎖死
+  _joystick = createJoystick(
+    root.querySelector('.gamepad-layout'),
     ({ dx }) => sendFn({ action: 'move', dx: dx ?? 0 }),
     { disabled: ['up', 'down'] },
   );
@@ -76,59 +70,8 @@ export function mount(root, sendFn) {
 }
 
 export function unmount() {
-  dpad?.destroy();
-  dpad = null;
+  _joystick?.destroy();
+  _joystick = null;
   cleanup.forEach(fn => fn());
   cleanup = [];
-}
-
-function createDpad(container, onMove, options = {}) {
-  const disabled = new Set(options.disabled ?? []);
-  const pressed = new Set();
-  const localCleanup = [];
-  const grid = document.createElement('div');
-  grid.className = 'dpad-buttons';
-
-  function emit() {
-    const dx = (pressed.has('right') ? 1 : 0) - (pressed.has('left') ? 1 : 0);
-    const dy = (pressed.has('down') ? 1 : 0) - (pressed.has('up') ? 1 : 0);
-    onMove({ dx, dy });
-  }
-
-  for (const { key } of DIRECTIONS) {
-    const isDisabled = disabled.has(key);
-    const button = document.createElement('button');
-    button.className = `dpad-btn dpad-${key}${isDisabled ? ' inactive' : ''}`;
-    button.innerHTML = '<svg viewBox="0 0 24 24" class="dpad-chevron"><path d="M7 15 L12 9 L17 15" /></svg>';
-    if (!isDisabled) {
-      const press = (event) => {
-        event.preventDefault();
-        pressed.add(key);
-        button.classList.add('pressed');
-        emit();
-      };
-      const release = () => {
-        pressed.delete(key);
-        button.classList.remove('pressed');
-        emit();
-      };
-      button.addEventListener('pointerdown', press);
-      button.addEventListener('pointerup', release);
-      button.addEventListener('pointercancel', release);
-      localCleanup.push(() => {
-        button.removeEventListener('pointerdown', press);
-        button.removeEventListener('pointerup', release);
-        button.removeEventListener('pointercancel', release);
-      });
-    }
-    grid.appendChild(button);
-  }
-
-  container.appendChild(grid);
-  return {
-    destroy() {
-      localCleanup.forEach((fn) => fn());
-      grid.remove();
-    },
-  };
 }

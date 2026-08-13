@@ -132,14 +132,21 @@
     <button class="primary-btn" id="prep-force-start-btn">⚡ 強制開始</button>
   </div>
 
-  <!-- TUTORIAL PAGING: persistent badge (same treatment as #ingame-back-btn)
-       shown only to the one drawn player controlling the how-to-play book —
-       layered on top of their normal game controls, whose real A/B buttons
-       flip pages while this is up (see src/controller/main.js). -->
-  <div id="tutorial-controller-badge" class="hidden">
-    <p>📖 你負責翻教學</p>
-    <p id="tutorial-controller-page"></p>
-    <p class="hint">🅰️ 上一頁　🅱️ 下一頁</p>
+  <!-- TUTORIAL: every playing device browses its own copy of the how-to-play
+       picture book independently — persistent overlay (same treatment as
+       #ingame-back-btn), layered on top of the normal game controls whose
+       real A/B buttons flip pages while this is up (see src/controller/main.js). -->
+  <div id="tutorial-reader" class="hidden">
+    <p class="tutorial-reader-title">📖 教學說明</p>
+    <img id="tutorial-reader-img" alt="教學圖說" />
+    <p id="tutorial-reader-counter"></p>
+    <p id="tutorial-reader-hint" class="hint"></p>
+  </div>
+
+  <!-- Shown instead of the reader once this device has flipped through to
+       the end and reported ready, while others are still catching up. -->
+  <div id="tutorial-waiting" class="hidden">
+    <p class="hint">✅ 看完了，等待其他人…</p>
   </div>
 
   <!-- PLAYING: layout injected dynamically (active players) -->

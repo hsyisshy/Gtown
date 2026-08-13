@@ -5,6 +5,7 @@ import {
 import { updatePhysics } from './physics.js';
 import { render } from './renderer.js';
 import { truncateName } from '../../shared/nameDisplay.js';
+import { bgm, SFX } from './audio.js';
 
 let vbState = null;
 
@@ -106,16 +107,9 @@ export default {
   },
 
   tutorial: {
-    goal: '把球打進對方場地就得分，先拿下 11 分獲勝！',
-    controls: [
-      { key: '🕹️', text: '左右移動' },
-      { key: 'Ⓐ', text: '跳躍' },
-      { key: 'Ⓑ', text: '擊球——在地面是高吊球，跳到空中揮擊就是強力殺球！' },
-    ],
-    tips: [
-      '球碰到身體也會自動彈開，但主動按 Ⓑ 打得又快又遠',
-      '讓球落在自己這邊的地板＝對方得分，守好每一球！',
-      '2v2：你只能在自己的前場或後場區域左右移動，和隊友分工守好整個半場！',
+    pages: [
+      '02_volleyball/tutorial/1.png',
+      '02_volleyball/tutorial/2.png',
     ],
   },
 
@@ -154,6 +148,7 @@ export default {
     };
 
     spawnBall('left');
+    bgm.start();
   },
 
   update(dt, globalState) {
@@ -205,6 +200,7 @@ export default {
         vbState.pointPauseTimer = vbState.scores[opponent] >= WIN_SCORE
           ? (vbState.winner = opponent, 3.0)
           : POINT_PAUSE;
+        SFX.whistle();
       }
       return;
     }
@@ -226,6 +222,7 @@ export default {
           vbState.phase = 'point';
           vbState.pointPauseTimer = POINT_PAUSE;
         }
+        SFX.whistle();
       }
     }
   },
@@ -252,6 +249,7 @@ export default {
           player.vy = JUMP_VELOCITY;
           player.onGround = false;
           player.animState = 'jumping';
+          SFX.jump();
         }
         break;
       case 'b':
@@ -261,6 +259,7 @@ export default {
   },
 
   onEnd() {
+    bgm.stop();
     vbState = null;
   },
 };

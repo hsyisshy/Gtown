@@ -15,6 +15,7 @@ import truck from './04_truck/index.js';
 import furnitureStack from './05_furniture-stack/index.js';
 import climb from './06_climb/index.js';
 import paintingSticker from './07_painting-sticker/index.js';
+import fall from './08_fall/index.js';
 
 export const GAMES = [
   hospital,
@@ -24,14 +25,14 @@ export const GAMES = [
   furnitureStack,
   climb,
   paintingSticker,
+  fall,
 ];
 
 // Cover-art-only previews for games still in development — no mechanics
 // yet, so they're never in GAMES/getGame() and can't actually be started.
-// They still get a numbered public/ folder (08_fall, 09_shoot) so the art
-// sits alongside real games' assets.
+// It still gets a numbered public/ folder (09_shoot) so the art sits
+// alongside real games' assets.
 export const UPCOMING_GAMES = [
-  { id: 'fall',  name: '危台求生', cover: '08_fall/fall_cover.png' },
   { id: 'shoot', name: '噴槍佔地', cover: '09_shoot/shoot_cover.png' },
 ];
 
