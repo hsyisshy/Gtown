@@ -1,9 +1,10 @@
 /**
  * 危台求生 — 2v2 platform-survival battle royale ported from fall-main/index.html
  *
- * Red vs blue, 2 per team (playersPerTeam: 2); short teams are filled with AI
- * snowmen so both sides always field 2. Everyone starts on one solid floating
- * platform; at 20s it permanently cracks into 3 pieces (5 in the "裂成五塊"
+ * Red vs blue, 2 per team (playersPerTeam: 2); requireFullTeams means both
+ * sides always field exactly 2 real players before the match can start.
+ * Everyone starts on one solid floating platform; at 20s it permanently
+ * cracks into 3 pieces (5 in the "裂成五塊"
  * crazy-mode mutator) and starts wobbling. Rising obstacles, falling
  * star/gem/fake-trap pickups, and periodic screen-wide "big hazard" columns
  * whittle down each player's 5 lives — falling off the platform costs a life
@@ -259,7 +260,6 @@ function makePlayer(def, x, deviceId, name) {
   return {
     ...def,
     deviceId,
-    isBot: deviceId === null,
     name,
     x, y: PLATFORM_Y - PLAYER_H,
     vy: 0,
@@ -276,54 +276,6 @@ function makePlayer(def, x, deviceId, name) {
     iceVX: 0,
     ctrl: { dx: 0, jumpHeld: false },
   };
-}
-
-// --- AI(補滿隊伍缺額的電腦角色) ----------------------------------------------
-function aiControl(p) {
-  let left = false, right = false, jump = false;
-
-  let targetPiece = null, minDist = Infinity;
-  for (const piece of fg.pieces) {
-    const center = piece.x + piece.w / 2;
-    const d = Math.abs((p.x + PLAYER_W / 2) - center);
-    if (d < minDist) { minDist = d; targetPiece = piece; }
-  }
-
-  if (targetPiece) {
-    const px = p.x + PLAYER_W / 2;
-    const edgeMargin = 20;
-    if (px < targetPiece.x + edgeMargin) right = true;
-    else if (px > targetPiece.x + targetPiece.w - edgeMargin) left = true;
-    else if (Math.random() < 0.02) { if (Math.random() < 0.5) left = true; else right = true; }
-
-    const nearLeftEdge = px < targetPiece.x + 25;
-    const nearRightEdge = px > targetPiece.x + targetPiece.w - 25;
-    if ((nearLeftEdge || nearRightEdge) && Math.random() < 0.05) jump = true;
-  }
-
-  for (const o of fg.obstacles) {
-    if (Math.abs(o.x - (p.x + PLAYER_W / 2)) < 40 && o.y > p.y && o.y - p.y < 150) {
-      if (o.x < p.x) { right = true; left = false; } else { left = true; right = false; }
-      if (Math.random() < 0.3) jump = true;
-    }
-  }
-
-  // 靠近對手時偶爾嘗試跳躍,試著踩到對方頭上讓他暈眩
-  for (const other of fg.players) {
-    if (other === p || other.eliminated || other.team === p.team) continue;
-    if (Math.abs(other.x - p.x) < 70 && Math.random() < 0.02) jump = true;
-  }
-
-  for (const bh of fg.bigHazards) {
-    const px = p.x + PLAYER_W / 2;
-    const inZone = px > bh.x - 15 && px < bh.x + bh.w + 15;
-    if (inZone) {
-      if (px < bh.x + bh.w / 2) { left = true; right = false; } else { right = true; left = false; }
-      if (bh.state === 'rising') jump = true;
-    }
-  }
-
-  return { left, right, jump };
 }
 
 // 只踩得到「對手」的頭 — 原型說明文字寫的就是踩對手,但程式碼漏了隊伍檢查,
@@ -663,6 +615,7 @@ export default {
   name: '危台求生',
   description: '2v2 平台大逃殺，別被踢下浮動平台',
   playersPerTeam: 2,
+  requireFullTeams: true,
   color: '#5aa9c9',
   emoji: '❄️',
   cover: '08_fall/fall_cover.png',
@@ -688,6 +641,7 @@ export default {
   },
 
   onStart(globalState, endCb) {
+    // requireFullTeams guarantees exactly 2 real players per side.
     const active = globalState.activePlayers || {};
     const teams = globalState.teams || {};
     const playing = Object.entries(active)
@@ -702,15 +656,12 @@ export default {
       : null;
     const maxLives = activeMutator?.id === 'oneLife' ? 1 : STARTING_LIVES;
 
-    let aiCount = 0;
     const players = SLOT_DEFS.map((def, i) => {
       const pool = def.team === 'red' ? redIds : blueIds;
       const poolIdx = def.team === 'red' ? i : i - 2;
-      const deviceId = pool[poolIdx] ?? null;
+      const deviceId = pool[poolIdx];
       const x = W / 2 - 105 + START_POSITION_SLOTS[i] * 70;
-      const name = deviceId
-        ? truncateName(globalState.players?.[deviceId]?.name ?? `Player ${deviceId}`)
-        : `AI-${++aiCount}`;
+      const name = truncateName(globalState.players?.[deviceId]?.name ?? `Player ${deviceId}`);
       const p = makePlayer(def, x, deviceId, name);
       p.lives = maxLives;
       return p;
@@ -830,15 +781,10 @@ export default {
 
     for (const p of fg.players) {
       if (p.eliminated) continue;
-      // 真人玩家中途斷線的話,座位交給 AI 接手
-      if (!p.isBot && !globalState.players?.[p.deviceId]) p.isBot = true;
 
       let wantLeft = false, wantRight = false, jumpPressed = false;
       if (p.stunTimer > 0) {
         p.stunTimer -= frames;
-      } else if (p.isBot) {
-        const ai = aiControl(p);
-        wantLeft = ai.left; wantRight = ai.right; jumpPressed = ai.jump;
       } else {
         wantLeft = p.ctrl.dx < -0.3;
         wantRight = p.ctrl.dx > 0.3;

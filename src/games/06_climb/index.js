@@ -1,10 +1,11 @@
 /**
  * 爬高派對 — 3v3 vertical climbing race ported from climb/index.html
  *
- * Red vs blue, 3 per team (playersPerTeam: 3); short teams are filled with
- * AI climbers so both sides always field 3. The camera force-scrolls upward
- * and zooms out to keep everyone framed; falling below the screen (into the
- * poison fog) eliminates you for good — no respawns. A full team wipe ends
+ * Red vs blue, 3 per team (playersPerTeam: 3); requireFullTeams means both
+ * sides always field exactly 3 real players before the match can start. The
+ * camera force-scrolls upward and zooms out to keep everyone framed; falling
+ * below the screen (into the poison fog) eliminates you for good — no
+ * respawns. A full team wipe ends
  * the match immediately, otherwise at 90s the team with fewer deaths wins,
  * ties broken by the higher team-best height.
  *
@@ -13,6 +14,7 @@
  * actual canvas.
  */
 import { truncateName } from '../../shared/nameDisplay.js';
+import { bgm, SFX } from './audio.js';
 
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
@@ -61,24 +63,21 @@ const OBSTACLE_BOUNCE_Y = 640;
 const OBSTACLE_COOLDOWN = 0.6;
 
 const STEAM_SPAWN_RATE = 14;
-const WALK_FRAME_DURATION = 0.05; // 走路每一格圖播放的秒數(11 張約 0.55 秒一輪)
-const SPRITE_DRAW_HEIGHT = 66;    // 角色畫出的高度,比碰撞箱(46)略大,腳底對齊
+const WALK_FRAME_DURATION = 0.05; // 走路每一格圖播放的秒數(4 張約 0.2 秒一輪)
+const SPRITE_DRAW_HEIGHT = 130;   // 角色畫出的高度,比碰撞箱(46)大上不少,外星人圖本身留白較多
 
-// --- 角色圖片素材(climb/p1~p3,各有 stand / jump / walk01~11) --------------
-const SPRITE_KEYS = ['p1', 'p2', 'p3'];
+// --- 角色圖片素材(climb/alien~alien6,各是一張橫向排列 4 格的走路 sprite sheet,
+// 沒有獨立的 stand/jump 圖 —— 站立借第 0 格、跳躍借第 1 格,見 pickPlayerSprite) ---
+const ALIEN_KEYS = ['alien', 'alien2', 'alien3', 'alien4', 'alien5', 'alien6'];
+const ALIEN_WALK_COUNT = 4;
 const SPRITE_IMAGES = {};
 function loadImage(path) {
   const img = new Image();
   img.src = path;
   return img;
 }
-for (const key of SPRITE_KEYS) {
-  SPRITE_IMAGES[key] = {
-    stand: loadImage(`06_climb/${key}/${key}_stand.png`),
-    jump: loadImage(`06_climb/${key}/${key}_jump.png`),
-    walk: Array.from({ length: 11 }, (_, i) =>
-      loadImage(`06_climb/${key}/${key}_walk${String(i + 1).padStart(2, '0')}.png`)),
-  };
+for (const key of ALIEN_KEYS) {
+  SPRITE_IMAGES[key] = { walk: loadImage(`06_climb/${key}/${key}_walk.png`) };
 }
 const backgroundImg = loadImage('06_climb/climb_background.png');
 const BG_PARALLAX = 0.35; // 背景捲動只有鏡頭的 35%,製造星空縱深感
@@ -209,14 +208,15 @@ const CHUNK_TYPES = [
 ];
 
 // --- 玩家 -------------------------------------------------------------------
-// 紅隊 = 原圖 P1~P3,藍隊 = 同套圖用濾鏡區分(黃 / 深灰 / 淺灰)
+// 紅隊 = alien/alien2/alien3(紅旗),藍隊 = alien4/alien5/alien6(藍旗) —— 每隻
+// 外星人的身體顏色跟旗子顏色都已經烘焙進圖檔本身,不用像舊版 p1~p3 那樣套濾鏡分隊。
 const SLOT_DEFS = [
-  { spriteKey: 'p1', hueShift: 0, color: '#ff6b6b', team: 'red' },
-  { spriteKey: 'p2', hueShift: 0, color: '#ff8f8f', team: 'red' },
-  { spriteKey: 'p3', hueShift: 0, color: '#ffb3b3', team: 'red' },
-  { spriteKey: 'p1', hueShift: 250, color: '#4da3ff', team: 'blue' },
-  { spriteKey: 'p2', colorMode: 'dark', hueShift: 0, color: '#6db8ff', team: 'blue' },
-  { spriteKey: 'p3', colorMode: 'light', hueShift: 0, color: '#9ccdff', team: 'blue' },
+  { spriteKey: 'alien',  color: '#ff6b6b', team: 'red' },
+  { spriteKey: 'alien2', color: '#ff8f8f', team: 'red' },
+  { spriteKey: 'alien3', color: '#ffb3b3', team: 'red' },
+  { spriteKey: 'alien4', color: '#4da3ff', team: 'blue' },
+  { spriteKey: 'alien5', color: '#6db8ff', team: 'blue' },
+  { spriteKey: 'alien6', color: '#9ccdff', team: 'blue' },
 ];
 const TEAM_UI = {
   red:  { label: '紅隊', text: '#ff8080', barBg: '#552222', barFill: '#ff4d4d' },
@@ -247,7 +247,6 @@ function makePlayer(def, startX) {
     deathCount: 0,
     obstacleCooldown: 0,
     ctrl: { dx: 0, jumpQueued: false, pushQueued: false },
-    ai: { targetX: startX, targetPlatform: undefined, decisionTimer: 0, pushTimer: Math.random() * 1.5 },
   };
 }
 
@@ -283,57 +282,6 @@ function allPlatforms() {
   const list = [];
   for (const c of cg.chunks) for (const p of c.platforms) if (p.state !== 'collapsed') list.push(p);
   return list;
-}
-
-// --- AI (補滿隊伍缺額的電腦角色) ---------------------------------------------
-function updateAI(p, dt) {
-  const ai = p.ai;
-  ai.decisionTimer -= dt;
-  if (ai.decisionTimer <= 0 || ai.targetPlatform === undefined) {
-    ai.decisionTimer = 0.35 + Math.random() * 0.25;
-    const candidates = allPlatforms().filter((pl) => {
-      const dy = p.y - pl.y; // 平台在上方 => dy > 0
-      return dy > 10 && dy < 210;
-    });
-    let best = null, bestScore = Infinity;
-    for (const pl of candidates) {
-      const platCenterX = pl.x + pl.w / 2;
-      const dx = Math.abs(platCenterX - (p.x + PLAYER_W / 2));
-      if (dx > 260) continue;
-      const dy = p.y - pl.y;
-      const score = dx * 1.0 + dy * 0.4;
-      if (score < bestScore) { bestScore = score; best = pl; }
-    }
-    if (best) {
-      ai.targetPlatform = best;
-      ai.targetX = best.x + best.w / 2 - PLAYER_W / 2 + (Math.random() * 40 - 20);
-    } else {
-      ai.targetPlatform = null;
-      ai.targetX = Math.max(10, Math.min(CANVAS_W - PLAYER_W - 10, p.x + (Math.random() * 240 - 120)));
-    }
-  }
-
-  const dx = ai.targetX - p.x;
-  const input = { left: false, right: false, jumpEdge: false, pushEdge: false };
-  if (Math.abs(dx) > 8) {
-    if (dx > 0) input.right = true; else input.left = true;
-  }
-  if (ai.targetPlatform && p.onGround) {
-    const platCenterX = ai.targetPlatform.x + ai.targetPlatform.w / 2;
-    if (Math.abs(platCenterX - (p.x + PLAYER_W / 2)) < 130) input.jumpEdge = true;
-  } else if (!ai.targetPlatform && p.onGround && Math.random() < 0.01) {
-    input.jumpEdge = true; // 隨機遊走時偶爾跳一下探路
-  }
-
-  // 偶爾推附近的敵方角色(不推隊友)
-  ai.pushTimer -= dt;
-  if (ai.pushTimer <= 0 && p.pushCooldown <= 0) {
-    const enemyNear = cg.players.some((o) => o !== p && o.alive && o.team !== p.team &&
-      Math.abs(o.x - p.x) < PUSH_RANGE_X && Math.abs(o.y - p.y) < PUSH_RANGE_Y);
-    if (enemyNear && Math.random() < 0.5) input.pushEdge = true;
-    ai.pushTimer = 0.8 + Math.random() * 1.2;
-  }
-  return input;
 }
 
 // --- 物理更新 -----------------------------------------------------------------
@@ -374,6 +322,7 @@ function updatePlayer(p, dt, input) {
       }
       p.vy = JUMP_VELOCITY;
       p.onGround = false;
+      SFX.jump();
     }
     if (input.pushEdge && p.pushCooldown <= 0) {
       tryPush(p);
@@ -446,6 +395,7 @@ function tryPush(pusher) {
     }
   }
   if (!target) return; // 沒推到人:不設冷卻,可以馬上再試
+  SFX.push(); // 任何人推到任何人都播放,推擠比跳躍少見很多,不會太吵
   pusher.pushCooldown = PUSH_COOLDOWN;
   pusher.pushLockTimer = PUSH_SELF_LOCK;
   const dir = (target.x >= pusher.x) ? 1 : -1;
@@ -468,6 +418,7 @@ function updateStomps() {
       if (overlapX && aBottom >= bTop - 6 && aBottom <= bTop + 22) {
         a.vy = STOMP_BONUS_VELOCITY;
         a.onGround = false;
+        SFX.jump(); // 借頭部彈跳也算一次跳躍,共用跳躍音效
         b.vx = 0;
         b.stunTimer = Math.max(b.stunTimer, STOMP_VICTIM_STUN);
         b.stompedTimer = STOMP_VICTIM_STUN;
@@ -546,6 +497,7 @@ function updateHazards(dt) {
             p.knockbackTimer = PUSH_KNOCKBACK_DURATION;
             p.pushFlashTimer = PUSH_FLASH_DURATION;
             p.obstacleCooldown = OBSTACLE_COOLDOWN;
+            SFX.push(); // 撞到障礙物的擊退跟被人推是同一種效果,共用同一個音效
           }
         }
       }
@@ -721,27 +673,104 @@ function drawPlatform(ctx, pl) {
   if (pl.state === 'collapsed' && (!pl.fadeTimer || pl.fadeTimer <= 0)) return;
   const sy = worldToScreenY(pl.y);
   if (sy < cg.visibleRawTop - 60 || sy > cg.visibleRawBottom + 60) return;
-  let color = '#e8daca';
+
+  if (pl.type === 'fake') { drawFakePlatform(ctx, pl, sy); return; }
+
+  // 太空站科幻風:冷色系金屬 + 發光飾邊,跟背景深紅/紫星雲互補
+  let colorTop = '#c9d2ff', colorBottom = '#4b4a86', edgeColor = '#2a2850', glowColor = '#8fe9ff';
   let dashed = false;
   let baseAlpha = 1;
-  if (pl.type === 'fake') { baseAlpha = 0.5; dashed = true; }
-  else if (pl.type === 'ice') color = '#ffffff';
-  else if (pl.type === 'conveyor') color = '#FFD23F';
-  else if (pl.type === 'moving') color = '#FF8C42';
-  else if (pl.type === 'narrow') color = '#c9a8e0';
+  if (pl.type === 'ice') {
+    colorTop = '#eafdff'; colorBottom = '#8ed3ea'; edgeColor = '#3f7f96'; glowColor = '#c8f6ff'; // 濕地:冰晶藍白
+  } else if (pl.type === 'conveyor') {
+    colorTop = '#ffeb9c'; colorBottom = '#cf8a12'; edgeColor = '#7a4d08'; glowColor = '#ffd24a';
+  } else if (pl.type === 'moving') {
+    colorTop = '#ffa3d6'; colorBottom = '#b3417e'; edgeColor = '#6e1f4d'; glowColor = '#ff7fd0';
+  } else if (pl.type === 'narrow') {
+    colorTop = '#ddbcff'; colorBottom = '#7c3fc9'; edgeColor = '#48226f'; glowColor = '#cf93ff';
+  }
 
   ctx.save();
   ctx.globalAlpha = baseAlpha;
   if (pl.state === 'collapsed') ctx.globalAlpha = baseAlpha * Math.max(0, pl.fadeTimer / 0.15);
   if (dashed) ctx.setLineDash([6, 4]);
-  ctx.fillStyle = color;
-  ctx.fillRect(pl.x, sy, pl.w, pl.h);
-  ctx.strokeStyle = pl.type === 'ice' ? 'rgba(90,160,220,0.6)' : 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(pl.x, sy, pl.w, pl.h);
+
+  const r = Math.min(6, pl.h / 2, pl.w / 2);
+  const thick = 5; // 側邊厚度,做出立體感
+
+  // 1) 底部厚度色塊(較暗),同時是陰影投射來源,讓平台感覺懸浮在星空中
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.55)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 6;
+  ctx.fillStyle = edgeColor;
+  ctx.beginPath();
+  ctx.roundRect(pl.x, sy, pl.w, pl.h + thick, r);
+  ctx.fill();
+  ctx.restore();
+
+  // 2) 主體:上淺下深漸層
+  const grad = ctx.createLinearGradient(0, sy, 0, sy + pl.h);
+  grad.addColorStop(0, colorTop);
+  grad.addColorStop(1, colorBottom);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.roundRect(pl.x, sy, pl.w, pl.h, r);
+  ctx.fill();
+
+  // 3) 頂部高光
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(pl.x + r, sy + 1.4);
+  ctx.lineTo(pl.x + pl.w - r, sy + 1.4);
+  ctx.stroke();
+
+  ctx.strokeStyle = edgeColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(pl.x, sy, pl.w, pl.h, r);
+  ctx.stroke();
+
+  // 4) 兩端發光鉚釘,呼應太空站風格
+  if (pl.w > 30) {
+    const midY = sy + pl.h / 2;
+    const capInset = Math.min(9, pl.w / 4);
+    ctx.fillStyle = glowColor;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = 6;
+    [pl.x + capInset, pl.x + pl.w - capInset].forEach((cx) => {
+      ctx.beginPath();
+      ctx.arc(cx, midY, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
   ctx.restore();
 
   if (pl.type === 'conveyor') drawConveyorArrows(ctx, pl, sy);
+}
+
+function drawFakePlatform(ctx, pl, sy) {
+  const r = Math.min(6, pl.h / 2, pl.w / 2);
+  // 呼吸感透明度:填色跟邊框強度隨時間緩緩浮動,暗示「這塊怪怪的、可能會消失」
+  const breathe = 0.5 + 0.5 * Math.sin(performance.now() / 450);
+  let fillAlpha = 0.12 + breathe * 0.10;
+  let strokeAlpha = 0.55 + breathe * 0.35;
+  if (pl.state === 'collapsed') {
+    const fade = Math.max(0, pl.fadeTimer / 0.15);
+    fillAlpha *= fade;
+    strokeAlpha *= fade;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(pl.x, sy, pl.w, pl.h, r);
+  ctx.fillStyle = `rgba(255,255,255,${fillAlpha.toFixed(3)})`;
+  ctx.fill();
+  ctx.strokeStyle = `rgba(255,255,255,${strokeAlpha.toFixed(3)})`;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function drawConveyorArrows(ctx, pl, sy) {
@@ -768,62 +797,217 @@ function drawConveyorArrows(ctx, pl, sy) {
   ctx.restore();
 }
 
+// 暈眩系陷阱(旋轉錘 / 地雷)共用的「迷幻核心」畫法:錐形漸層掃出青→紫→洋紅的
+// 循環色彩製造暈眩感,疊加放射狀明暗做出球體感,外圍再加脈動發光與反向旋轉的
+// 虛線光圈,讓玩家在碰到之前就能感受到「這裡會讓人頭暈」的視覺語言。
+function drawHypnoticOrb(ctx, cx, cy, radius, hueBase, t, pulseDivisor, opts) {
+  opts = opts || {};
+  const swirlSpeedDivisor = opts.swirlSpeed || 900;
+  const glowBoost = opts.glowBoost || 0;
+  const flash = opts.flash || 0; // 0~1,愈高愈偏向攻擊瞬間的白/紅閃光
+
+  const pulse = 0.5 + 0.5 * Math.sin(t / (pulseDivisor || 260));
+
+  ctx.save();
+  ctx.shadowColor = `hsla(${hueBase}, 90%, 70%, 0.9)`;
+  ctx.shadowBlur = 10 + pulse * 12 + glowBoost;
+  ctx.fillStyle = `hsla(${hueBase}, 85%, 60%, ${0.55 + flash * 0.25})`;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 1.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.clip();
+  const swirlRot = (t / swirlSpeedDivisor) % (Math.PI * 2);
+  const swirl = ctx.createConicGradient(swirlRot, cx, cy);
+  swirl.addColorStop(0, '#7fe9ff');
+  swirl.addColorStop(0.33, '#b389ff');
+  swirl.addColorStop(0.66, '#ff7fe0');
+  swirl.addColorStop(1, '#7fe9ff');
+  ctx.fillStyle = swirl;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  ctx.globalCompositeOperation = 'overlay';
+  const shade = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.05, cx, cy, radius);
+  shade.addColorStop(0, 'rgba(255,255,255,0.9)');
+  shade.addColorStop(0.5, 'rgba(255,255,255,0.12)');
+  shade.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = shade;
+  ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  if (flash > 0) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = `rgba(255,225,225,${flash * 0.65})`;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = `hsla(${hueBase + 25}, 90%, 75%, 0.55)`;
+  ctx.lineWidth = 1.4;
+  for (let i = 0; i < 2; i++) {
+    const ringR = radius * (1.8 + i * 0.6);
+    const dir = i === 0 ? 1 : -1;
+    ctx.setLineDash([ringR * 0.35, ringR * 0.55]);
+    ctx.lineDashOffset = dir * (t / 15);
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// 地雷進入「攻擊(erupt)」瞬間的一次性衝擊波:一圈向外擴散淡出的震波環,加上
+// 幾道飛散的能量碎片,讓玩家不用看數值也能一眼看出「這裡剛剛炸開了」。
+function drawEruptBurst(ctx, cx, cy, baseRadius, age) {
+  const duration = 0.35;
+  if (age < 0 || age > duration) return;
+  const p = age / duration;
+
+  ctx.save();
+  ctx.strokeStyle = `rgba(255,235,245,${(1 - p) * 0.9})`;
+  ctx.lineWidth = 3 * (1 - p) + 1;
+  ctx.shadowColor = 'rgba(255,255,255,0.9)';
+  ctx.shadowBlur = 14 * (1 - p);
+  ctx.beginPath();
+  ctx.arc(cx, cy, baseRadius * (0.6 + p * 2.2), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  const sparkCount = 6;
+  for (let i = 0; i < sparkCount; i++) {
+    const a = (i / sparkCount) * Math.PI * 2 + i * 0.7;
+    const dist = baseRadius * (0.8 + p * 2.6);
+    const sx = cx + Math.cos(a) * dist;
+    const sy2 = cy + Math.sin(a) * dist;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - p * 1.3);
+    ctx.fillStyle = '#fff2fb';
+    ctx.shadowColor = '#ff9ce8';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.arc(sx, sy2, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
 function drawHazard(ctx, h) {
   if (h.type === 'spinner') {
     const sy = worldToScreenY(h.cyBase);
     if (sy < cg.visibleRawTop - 120 || sy > cg.visibleRawBottom + 120) return;
     const tipX = h.cx + Math.cos(h.angle) * h.radius;
     const tipYs = sy + Math.sin(h.angle) * h.radius;
+    const t = performance.now();
+    // 色相限制在青→紫→洋紅之間來回擺盪,維持冷色調迷幻感,避開暖色系
+    const hueBase = 190 + (Math.sin(t / 3000) * 0.5 + 0.5) * 110;
+
     ctx.save();
-    ctx.strokeStyle = '#e34d4d';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(190,150,255,0.85)';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(160,120,255,0.8)';
+    ctx.shadowBlur = 6;
     ctx.beginPath();
     ctx.moveTo(h.cx, sy);
     ctx.lineTo(tipX, tipYs);
     ctx.stroke();
-    ctx.fillStyle = '#ff8a8a';
+
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#b98bff';
+    ctx.fillStyle = '#e8dcff';
     ctx.beginPath();
-    ctx.arc(tipX, tipYs, 12, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#553333';
-    ctx.beginPath();
-    ctx.arc(h.cx, sy, 6, 0, Math.PI * 2);
+    ctx.arc(h.cx, sy, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+
+    drawHypnoticOrb(ctx, tipX, tipYs, 13, hueBase, t);
   } else if (h.type === 'mine') {
     const sy = worldToScreenY(h.y);
     if (sy < cg.visibleRawTop - 60 || sy > cg.visibleRawBottom + 60) return;
-    ctx.save();
-    let color = '#5a3d2b';
-    if (h.phase === 'warn') color = (Math.floor(performance.now() / 100) % 2 === 0) ? '#ff5050' : '#5a3d2b';
-    if (h.phase === 'erupt') color = '#ffcf40';
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(h.x, sy, h.phase === 'erupt' ? h.radius : h.radius * 0.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    const t = performance.now();
+    const hueBase = 190 + (Math.sin(t / 3000) * 0.5 + 0.5) * 110;
+    // 隨階段放大核心、加快脈動與漩渦轉速,越接近噴發越有壓迫感;進入 erupt 的
+    // 瞬間額外記錄時間點,播放一次性衝擊波 + 閃光,而不只是單純變大
+    let displayR = h.radius * 0.55, pulseDivisor = 260, orbOpts;
+    if (h.phase === 'warn') {
+      displayR = h.radius * 0.75; pulseDivisor = 90;
+    } else if (h.phase === 'erupt') {
+      displayR = h.radius; pulseDivisor = 45;
+      if (h._eruptStartT == null) h._eruptStartT = t;
+      const age = (t - h._eruptStartT) / 1000;
+      orbOpts = { swirlSpeed: 220, glowBoost: 16, flash: Math.max(0, 1 - age / 0.25) };
+      drawEruptBurst(ctx, h.x, sy, h.radius, age);
+    }
+    if (h.phase !== 'erupt') h._eruptStartT = null;
+    drawHypnoticOrb(ctx, h.x, sy, displayR, hueBase, t, pulseDivisor, orbOpts);
   } else if (h.type === 'obstacle') {
     const sy = worldToScreenY(h.y);
     if (sy < cg.visibleRawTop - 60 || sy > cg.visibleRawBottom + 60) return;
     ctx.save();
-    // 灰色鐵球 + 尖刺,跟暈眩系的紅色陷阱區隔開
-    ctx.fillStyle = '#6b6f76';
-    ctx.beginPath();
-    ctx.arc(h.x, sy, h.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#b0b4bb';
+    ctx.translate(h.x, sy);
+    const rot = (performance.now() / 5000) % (Math.PI * 2); // 緩慢自轉,強化威脅感
+    ctx.rotate(rot);
+
+    const R = h.radius;
+    const tipR = R + 10;
     const spikeCount = 8;
+
+    // 尖刺:根部金屬灰到尖端發光紫藍的漸層,做出金屬立體感
     for (let i = 0; i < spikeCount; i++) {
-      const a = (i / spikeCount) * Math.PI * 2 + performance.now() / 900;
+      const a = (i / spikeCount) * Math.PI * 2;
       const baseA = a - 0.12, baseB = a + 0.12;
-      const tipR = h.radius + 10;
+      const bx1 = Math.cos(baseA) * R, by1 = Math.sin(baseA) * R;
+      const bx2 = Math.cos(baseB) * R, by2 = Math.sin(baseB) * R;
+      const tx = Math.cos(a) * tipR, ty = Math.sin(a) * tipR;
+
+      const spikeGrad = ctx.createLinearGradient(0, 0, tx, ty);
+      spikeGrad.addColorStop(0, '#454a5c');
+      spikeGrad.addColorStop(0.6, '#aeb4c9');
+      spikeGrad.addColorStop(1, '#eef0ff');
+      ctx.fillStyle = spikeGrad;
       ctx.beginPath();
-      ctx.moveTo(h.x + Math.cos(baseA) * h.radius, sy + Math.sin(baseA) * h.radius);
-      ctx.lineTo(h.x + Math.cos(a) * tipR, sy + Math.sin(a) * tipR);
-      ctx.lineTo(h.x + Math.cos(baseB) * h.radius, sy + Math.sin(baseB) * h.radius);
+      ctx.moveTo(bx1, by1);
+      ctx.lineTo(tx, ty);
+      ctx.lineTo(bx2, by2);
       ctx.closePath();
       ctx.fill();
+
+      ctx.save();
+      ctx.shadowColor = '#8f6fff';
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = '#d9c9ff';
+      ctx.beginPath();
+      ctx.arc(tx, ty, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
+
+    // 球體核心:放射狀漸層做出立體球感,配色走電漿紫/警示藍
+    const coreGrad = ctx.createRadialGradient(-R * 0.35, -R * 0.35, R * 0.1, 0, 0, R);
+    coreGrad.addColorStop(0, '#f4ecff');
+    coreGrad.addColorStop(0.35, '#9b7bff');
+    coreGrad.addColorStop(0.75, '#4b2f8f');
+    coreGrad.addColorStop(1, '#1a0f3d');
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 表面能量接縫:幾條淡淡發光弧線,增添科幻細節
+    ctx.save();
+    ctx.shadowColor = '#c8b6ff';
+    ctx.shadowBlur = 5;
+    ctx.strokeStyle = 'rgba(220,200,255,0.55)';
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 3; i++) {
+      const seamA = (i / 3) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.62, seamA, seamA + 1.6);
+      ctx.stroke();
+    }
+    ctx.restore();
+
     ctx.restore();
   }
 }
@@ -852,15 +1036,12 @@ function drawPushImpactRing(ctx, cx, cy, elapsed) {
   ctx.restore();
 }
 
-// 依目前狀態(跳躍中/走路中/站立)挑這一幀該畫的圖
+// 依目前狀態(跳躍中/走路中/站立)挑這一幀該畫的走路 sheet 格子索引 —— 外星人
+// 沒有獨立 stand/jump 圖,站立借第 0 格、跳躍借第 1 格
 function pickPlayerSprite(p) {
-  const sprites = SPRITE_IMAGES[p.spriteKey];
-  if (!p.onGround) return sprites.jump;
-  if (Math.abs(p.vx) > 15) {
-    const frameIdx = Math.floor(p.animTimer / WALK_FRAME_DURATION) % sprites.walk.length;
-    return sprites.walk[frameIdx];
-  }
-  return sprites.stand;
+  if (!p.onGround) return 1;
+  if (Math.abs(p.vx) > 15) return Math.floor(p.animTimer / WALK_FRAME_DURATION) % ALIEN_WALK_COUNT;
+  return 0;
 }
 
 function drawPlayer(ctx, p) {
@@ -874,8 +1055,9 @@ function drawPlayer(ctx, p) {
 
   const feetX = p.x + PLAYER_W / 2;
   const feetY = sy + PLAYER_H;
-  const img = pickPlayerSprite(p);
-  const imgReady = img && img.complete && img.naturalWidth > 0;
+  const sheet = SPRITE_IMAGES[p.spriteKey].walk;
+  const imgReady = sheet && sheet.complete && sheet.naturalWidth > 0;
+  const frameIndex = pickPlayerSprite(p);
 
   ctx.save();
   ctx.translate(feetX, feetY);
@@ -883,15 +1065,15 @@ function drawPlayer(ctx, p) {
   ctx.globalAlpha = p.pushLockTimer > 0 ? 0.75 : 1;
 
   if (imgReady) {
-    if (p.colorMode === 'dark') ctx.filter = 'grayscale(1) brightness(0.8)';
-    if (p.colorMode === 'light') ctx.filter = 'grayscale(1) brightness(1.7) contrast(0.85)';
-    if (p.hueShift) ctx.filter = `hue-rotate(${p.hueShift}deg) saturate(1.4)`;
+    // 身體/旗子顏色已經烘焙進每隻外星人的圖檔,不用濾鏡分隊 —— 橫向切出這一格
+    const sw = sheet.naturalWidth / ALIEN_WALK_COUNT;
+    const sh = sheet.naturalHeight;
+    const sx = frameIndex * sw;
     const drawH = SPRITE_DRAW_HEIGHT;
-    const drawW = drawH * (img.naturalWidth / img.naturalHeight);
-    ctx.drawImage(img, -drawW / 2, -drawH, drawW, drawH);
+    const drawW = drawH * (sw / sh);
+    ctx.drawImage(sheet, sx, 0, sw, sh, -drawW / 2, -drawH, drawW, drawH);
     if (blinkOn) {
       // 只把角色本體(不透明像素)蓋成白色,不影響透明背景
-      ctx.filter = 'none';
       ctx.globalCompositeOperation = 'source-atop';
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(-drawW / 2, -drawH, drawW, drawH);
@@ -1030,6 +1212,7 @@ export default {
   name: '爬高派對',
   description: '3v3 往上爬，別被毒霧吞沒',
   playersPerTeam: 3,
+  requireFullTeams: true,
   color: '#8f7ee0',
   emoji: '🧗',
   cover: '06_climb/climb_cover.png',
@@ -1050,24 +1233,20 @@ export default {
   },
 
   onStart(globalState, endCb) {
+    // requireFullTeams guarantees exactly 3 real players per side.
     const active = globalState.activePlayers || {};
     const teams = globalState.teams || {};
     const playing = Object.entries(active)
       .filter(([, role]) => role === 'playing')
       .map(([id]) => id);
     const redIds = playing.filter(id => teams[id] === 'red');
-    const blueIds = playing.filter(id => teams[id] !== 'red');
+    const blueIds = playing.filter(id => teams[id] === 'blue');
 
-    // 真人玩家填進該隊的前幾個名額,剩下的由 AI 補滿
-    let aiCount = 0;
     const players = SLOT_DEFS.map((def, i) => {
-      const deviceId = (def.team === 'red' ? redIds[i] : blueIds[i - 3]) ?? null;
+      const deviceId = def.team === 'red' ? redIds[i] : blueIds[i - 3];
       const p = makePlayer(def, 200 + i * 160);
       p.deviceId = deviceId;
-      p.isBot = deviceId === null;
-      p.name = deviceId
-        ? truncateName(globalState.players?.[deviceId]?.name ?? `Player ${deviceId}`)
-        : `AI-${++aiCount}`;
+      p.name = truncateName(globalState.players?.[deviceId]?.name ?? `Player ${deviceId}`);
       return p;
     });
 
@@ -1096,6 +1275,8 @@ export default {
     // 地面 / 起始安全區塊,再預生成前 3 個區塊(第一個必為一般爬升)
     cg.chunks.push({ index: 0, baseY: 0, platforms: [fullWidthPlatform(0, 0)], hazards: [] });
     for (let i = 0; i < 3; i++) spawnNextChunk();
+
+    bgm.start();
   },
 
   update(dt, globalState) {
@@ -1107,21 +1288,14 @@ export default {
     updateMovingPlatforms(dt);
     for (const p of cg.players) {
       if (!p.alive) continue;
-      // 真人玩家中途斷線的話,座位交給 AI 接手
-      if (!p.isBot && !globalState.players?.[p.deviceId]) p.isBot = true;
-      let input;
-      if (p.isBot) {
-        input = updateAI(p, dt);
-      } else {
-        input = {
-          left: p.ctrl.dx < -0.3,
-          right: p.ctrl.dx > 0.3,
-          jumpEdge: p.ctrl.jumpQueued,
-          pushEdge: p.ctrl.pushQueued,
-        };
-        p.ctrl.jumpQueued = false;
-        p.ctrl.pushQueued = false;
-      }
+      const input = {
+        left: p.ctrl.dx < -0.3,
+        right: p.ctrl.dx > 0.3,
+        jumpEdge: p.ctrl.jumpQueued,
+        pushEdge: p.ctrl.pushQueued,
+      };
+      p.ctrl.jumpQueued = false;
+      p.ctrl.pushQueued = false;
       updatePlayer(p, dt, input);
     }
     updateStomps();
@@ -1175,6 +1349,7 @@ export default {
   },
 
   onEnd() {
+    bgm.stop();
     cg = null;
   },
 };

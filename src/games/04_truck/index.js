@@ -1,8 +1,8 @@
 /**
  * 農場卡車大亂鬥 — ported from truck_animal-main/index.html
  *
- * Red vs blue, up to 3 trucks per team (playersPerTeam: 3); short teams are
- * filled with AI trucks so both sides always field 3 and the arena stays busy.
+ * Red vs blue, 3 trucks per team (playersPerTeam: 3); requireFullTeams means
+ * both sides always field exactly 3 real players before the match can start.
  *
  * Controls (one button): hold A to dash straight ahead, release to spin in
  * place hunting for a direction — the prototype's spin-dash player mode.
@@ -24,7 +24,7 @@ const ROUND_TIME = 65;
 const TRUCKS_PER_TEAM = 3;
 
 const TRUCK_W = 64, TRUCK_H = 37, TRUCK_RADIUS = 34;
-const MAX_SPEED = 320, MAX_REVERSE = 160, ACCEL = 480, DECEL = 340, TURN_RATE = 3.0;
+const MAX_SPEED = 320, ACCEL = 480, DECEL = 340;
 const SPIN_RATE = 3.6;      // 沒按加速時原地自轉的角速度
 const HIT_COOLDOWN = 0.6;
 const MIN_HIT_DIFF = 90;    // 速度差(或撞牆時的速度)要超過這個值才算「撞到」
@@ -64,11 +64,6 @@ function rand(a, b) { return a + Math.random() * (b - a); }
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
-function angleDiffSign(from, to) {
-  const d = ((to - from + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-  return d > 0.05 ? 1 : d < -0.05 ? -1 : 0;
-}
-
 function ellipseClamp(x, y, radius) {
   const dx = x - ARENA.cx, dy = y - ARENA.cy;
   const rx = Math.max(1, ARENA.rx - radius), ry = Math.max(1, ARENA.ry - radius);
@@ -92,12 +87,9 @@ function makeTruck(x, y, angle, team, deviceId, name) {
     x, y, angle, speed: 0,
     team, deviceId, name,
     color: TEAM_COLOR[team],
-    isAI: deviceId === null,
     accel: false,           // controller holds A → true
     cargo,
     hitTimer: 0,
-    aiTargetAngle: angle,
-    aiRetargetTimer: 0,
   };
 }
 
@@ -137,39 +129,7 @@ function ejectAnimals(truck, dirAngle, impactSpeed, mode, count) {
 
 // --- per-frame systems --------------------------------------------------
 
-function applyControl(t, fwd, turn, dt) {
-  if (fwd > 0) t.speed = Math.min(MAX_SPEED, t.speed + ACCEL * dt);
-  else if (fwd < 0) t.speed = Math.max(-MAX_REVERSE, t.speed - ACCEL * dt);
-  else {
-    if (t.speed > 0) t.speed = Math.max(0, t.speed - DECEL * dt);
-    else if (t.speed < 0) t.speed = Math.min(0, t.speed + DECEL * dt);
-  }
-  t.angle += turn * TURN_RATE * dt * (t.speed >= 0 ? 1 : -1) * clamp(Math.abs(t.speed) / 60, 0.3, 1);
-}
-
-function aiThink(t, dt) {
-  t.aiRetargetTimer -= dt;
-  let target = null, best = Infinity;
-  for (const a of tk.animals) {
-    if (a.state !== 'wandering') continue;
-    const d = dist(t, a);
-    if (d < best) { best = d; target = a; }
-  }
-  let turn;
-  if (target) {
-    turn = angleDiffSign(t.angle, Math.atan2(target.y - t.y, target.x - t.x));
-  } else {
-    if (t.aiRetargetTimer <= 0) {
-      t.aiTargetAngle = t.angle + rand(-2, 2);
-      t.aiRetargetTimer = rand(1, 2.5);
-    }
-    turn = angleDiffSign(t.angle, t.aiTargetAngle);
-  }
-  applyControl(t, 1, turn, dt);
-}
-
 function truckInput(t, dt) {
-  if (t.isAI) { aiThink(t, dt); return; }
   if (t.accel) {
     t.speed = Math.min(MAX_SPEED, t.speed + ACCEL * dt);
   } else {
@@ -292,6 +252,7 @@ export default {
   name: '卡車亂鬥',
   description: '衝撞對手，搶收噴飛的動物',
   playersPerTeam: TRUCKS_PER_TEAM,
+  requireFullTeams: true,
   color: '#7ec850',
   emoji: '🚚',
   cover: '04_truck/truck_cover.png',
@@ -308,14 +269,14 @@ export default {
     loadAnimalImages();
     bgm.start();
 
+    // requireFullTeams guarantees exactly TRUCKS_PER_TEAM real players per side.
     const active = globalState.activePlayers || {};
     const teams  = globalState.teams || {};
     const playing = Object.entries(active)
       .filter(([, role]) => role === 'playing')
       .map(([id]) => id);
-    const ids = playing.length >= 2 ? playing : Object.keys(globalState.players || {});
-    const redIds  = ids.filter(id => teams[id] === 'red').slice(0, TRUCKS_PER_TEAM);
-    const blueIds = ids.filter(id => teams[id] === 'blue').slice(0, TRUCKS_PER_TEAM);
+    const redIds  = playing.filter(id => teams[id] === 'red');
+    const blueIds = playing.filter(id => teams[id] === 'blue');
 
     // Spawn corners: red team on the left, blue on the right, each side's
     // trucks stacked in an evenly-spaced vertical row.
@@ -330,16 +291,12 @@ export default {
     };
 
     const trucks = [];
-    let aiCount = 0;
     for (const team of ['red', 'blue']) {
       const teamIds = team === 'red' ? redIds : blueIds;
-      for (let slot = 0; slot < TRUCKS_PER_TEAM; slot++) {
+      teamIds.forEach((deviceId, slot) => {
         const s = spawns[team][slot];
-        const deviceId = teamIds[slot] ?? null;
-        // Short team → AI truck fills the slot so it's always 2v2
-        const name = deviceId ? _name(globalState, deviceId) : `AI-${++aiCount}`;
-        trucks.push(makeTruck(s.x, s.y, s.a, team, deviceId, name));
-      }
+        trucks.push(makeTruck(s.x, s.y, s.a, team, deviceId, _name(globalState, deviceId)));
+      });
     }
 
     tk = {

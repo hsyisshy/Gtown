@@ -9,17 +9,15 @@ import { bgm, SFX } from './audio.js';
 
 let vbState = null;
 
-// Split a side's playable x-range into `count` non-overlapping zones. In 2v2
-// each teammate is confined to one zone (index 0 = back / near the wall,
-// index 1 = front / near the net) so they never overlap — the "前後分區"
-// court model. Returned low→high, but ordered back-first for both sides so
-// slot 0 is always the back player.
-function playerZones(side, count) {
+// Split a side's playable x-range into a back zone (near the wall) and a
+// front zone (near the net) so the two teammates never overlap — the
+// "前後分區" court model. Returned back-first so slot 0 is always the back
+// player.
+function playerZones(side) {
   const halfW = PLAYER_W / 2;
   const [lo, hi] = side === 'left'
     ? [LEFT_WALL + halfW, NET_X - NET_W / 2 - halfW]      // wall … net
     : [NET_X + NET_W / 2 + halfW, RIGHT_WALL - halfW];    // net … wall
-  if (count <= 1) return [{ xMin: lo, xMax: hi }];
   const mid = (lo + hi) / 2;
   return side === 'left'
     ? [{ xMin: lo, xMax: mid }, { xMin: mid, xMax: hi }]  // back(wall), front(net)
@@ -49,12 +47,10 @@ function initPlayer(side, deviceId, teamColor, name, zone, slot) {
   };
 }
 
-// Build a side's player array (1 or 2 players) with zone assignments.
+// Build a side's player array (always 2, back + front) with zone assignments.
 function initSide(side, ids, teamColor, globalState) {
-  const zones = playerZones(side, ids.length >= 2 ? 2 : 1);
-  return ids.slice(0, 2).map((id, i) =>
-    initPlayer(side, id, teamColor, _name(globalState, id), zones[i] ?? zones[0], i)
-  );
+  const zones = playerZones(side);
+  return ids.map((id, i) => initPlayer(side, id, teamColor, _name(globalState, id), zones[i], i));
 }
 
 // Everyone on the court, both sides — handy for input routing / lookups.
@@ -80,31 +76,12 @@ function spawnBall(serving) {
 export default {
   id: 'volleyball',
   name: '熱血排球',
-  description: '1v1 spike battle',
+  description: '2v2 排球對戰，合力把球打進對方場地！',
+  playersPerTeam: 2,
+  requireFullTeams: true,
   color: '#ffe066',
   emoji: '🏐',
   cover: '02_volleyball/volleyball_cover.png',
-
-  // Mode picker reuses the map-select screen. 2v2 needs 2 members on BOTH
-  // teams; otherwise it renders greyed-out. When 1v1 is the only possibility
-  // (both teams ≤ 1) the picker is skipped entirely (autoIndex).
-  maps: [
-    { name: '1 vs 1', description: '單挑對決' },
-    { name: '2 vs 2', description: '雙人合作' },
-  ],
-  resolveModes(redCount, blueCount) {
-    const canDouble = redCount >= 2 && blueCount >= 2;
-    const maps = [
-      { name: '1 vs 1', description: '單挑對決', enabled: true },
-      { name: '2 vs 2', description: canDouble ? '雙人合作' : '每隊需滿 2 人', enabled: canDouble },
-    ];
-    // Only one sane option (nobody can field a pair) → skip the picker.
-    const autoIndex = (redCount <= 1 && blueCount <= 1) ? 0 : null;
-    return { maps, autoIndex };
-  },
-  playersPerTeamFor(mapIndex) {
-    return mapIndex === 1 ? 2 : 1;
-  },
 
   tutorial: {
     pages: [
@@ -114,21 +91,16 @@ export default {
   },
 
   onStart(globalState, endCb) {
-    // Red plays the left side, blue the right — drawn players only.
+    // Red plays the left side, blue the right — requireFullTeams guarantees
+    // exactly 2 real players per side by the time this runs.
     const active  = globalState.activePlayers || {};
     const teams   = globalState.teams || {};
     const playing = Object.entries(active)
       .filter(([, role]) => role === 'playing')
       .map(([id]) => id);
-    const ids = playing.length ? playing : Object.keys(globalState.players || {});
 
-    let redIds  = ids.filter(id => teams[id] === 'red');
-    let blueIds = ids.filter(id => teams[id] === 'blue');
-    // Degenerate fallback (no usable team split): first → left, next → right.
-    if (!redIds.length || !blueIds.length) {
-      redIds  = ids.slice(0, 1);
-      blueIds = ids.slice(1, 2);
-    }
+    const redIds  = playing.filter(id => teams[id] === 'red');
+    const blueIds = playing.filter(id => teams[id] === 'blue');
 
     vbState = {
       players: {

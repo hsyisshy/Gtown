@@ -70,8 +70,8 @@ function updatePlayers(dt, vbState) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
 
-      // Each player is clamped to their own zone (full half in 1v1, front or
-      // back sub-zone in 2v2). Zones already bake in the wall/net margins.
+      // Each player is clamped to their own front/back sub-zone. Zones
+      // already bake in the wall/net margins.
       p.x = Math.max(p.xMin, Math.min(p.xMax, p.x));
 
       const groundLevel = GROUND_Y - PLAYER_H / 2;
