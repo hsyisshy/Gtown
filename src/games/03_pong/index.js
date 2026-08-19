@@ -6,6 +6,7 @@
  * Game ends when a player reaches 4 points (score > 3).
  */
 import { truncateName } from '../../shared/nameDisplay.js';
+import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPreload.js';
 import { bgm, SFX } from './audio.js';
 
 const WIN_SCORE = 4;
@@ -166,14 +167,20 @@ export default {
       activeEffects: [],
       lastHitter: null,
       puTimer: 0,
+      assetsReady: false,
       _endCb: endCb,
       _globalState: globalState,
     };
     resetBall(BALL_SPEED_INIT, 0);
+    preloadImages([bgImg]).then(() => { if (pg) pg.assetsReady = true; });
+  },
+
+  preload() {
+    return preloadImages([bgImg]);
   },
 
   update(dt, globalState) {
-    if (!pg) return;
+    if (!pg || !pg.assetsReady) return;
 
     const { paddles, ball, score } = pg;
 
@@ -257,6 +264,7 @@ export default {
     // Scoring
     if (ball.pos.x >= 200) {
       score[0] += 1;
+      SFX.ding();
       _vibratePlayer(globalState, paddles[1].deviceId);
       if (score[0] >= WIN_SCORE) { _finish(globalState, 0); return; }
       pg.scoreMsg = `${_name(globalState, paddles[0].deviceId)} 得分！`;
@@ -264,6 +272,7 @@ export default {
       resetBall(-BALL_SPEED_INIT, 0);
     } else if (ball.pos.x <= 0) {
       score[1] += 1;
+      SFX.ding();
       _vibratePlayer(globalState, paddles[0].deviceId);
       if (score[1] >= WIN_SCORE) { _finish(globalState, 1); return; }
       pg.scoreMsg = `${_name(globalState, paddles[1].deviceId)} 得分！`;
@@ -275,6 +284,7 @@ export default {
 
   draw(ctx, w, h) {
     if (!pg) return;
+    if (!pg.assetsReady) { drawAssetLoadingPlaceholder(ctx, w, h, '乒乓對戰'); return; }
 
     const { paddles, ball, score, scoreMsg } = pg;
 

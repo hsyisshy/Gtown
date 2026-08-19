@@ -15,6 +15,7 @@
  */
 import { truncateName } from '../../shared/nameDisplay.js';
 import { TEAM_COLOR } from '../../shared/constants.js';
+import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPreload.js';
 import { bgm, SFX } from './audio.js';
 
 const LOGICAL_W = 1600, LOGICAL_H = 900;
@@ -265,6 +266,11 @@ export default {
     ],
   },
 
+  preload() {
+    loadAnimalImages();
+    return preloadImages([arenaBgImg, TRUCK_SPRITES.red, TRUCK_SPRITES.blue, ...animalImages]);
+  },
+
   onStart(globalState, endCb) {
     loadAnimalImages();
     bgm.start();
@@ -304,13 +310,16 @@ export default {
       animals: [],
       timeLeft: ROUND_TIME,
       finished: false,
+      assetsReady: false,
       _endCb: endCb,
       _globalState: globalState,
     };
+    preloadImages([arenaBgImg, TRUCK_SPRITES.red, TRUCK_SPRITES.blue, ...animalImages])
+      .then(() => { if (tk) tk.assetsReady = true; });
   },
 
   update(dt, globalState) {
-    if (!tk || tk.finished) return;
+    if (!tk || tk.finished || !tk.assetsReady) return;
 
     for (const t of tk.trucks) truckInput(t, dt);
     for (const t of tk.trucks) truckMove(t, dt);
@@ -327,6 +336,7 @@ export default {
 
   draw(ctx, w, h) {
     if (!tk) return;
+    if (!tk.assetsReady) { drawAssetLoadingPlaceholder(ctx, w, h, '卡車亂鬥'); return; }
 
     // Letterbox: uniform scale of the 1600x900 logical space
     const scale = Math.min(w / LOGICAL_W, h / LOGICAL_H);

@@ -168,7 +168,8 @@ body {
 #lobby-master, #lobby-player,
 #game-select-master, #game-select-player,
 #map-select-master, #map-select-player,
-#results-master, #results-player {
+#results-master, #results-player,
+#prep-waiting, #prep-ready-pending, #prep-ready-done, #prep-watching {
   position: absolute;
   inset: 0;
   display: flex;
@@ -189,7 +190,9 @@ body {
 #lobby-master .hint,      #lobby-player .hint,
 #game-select-master .role-tag, #game-select-player .hint,
 #map-select-master .role-tag,  #map-select-player .hint,
-#results-master .role-tag,     #results-player .hint {
+#results-master .role-tag,     #results-player .hint,
+#prep-waiting .hint, #prep-ready-pending .hint,
+#prep-ready-done .hint, #prep-watching .hint {
   color: #4a2f18;
   text-shadow:
     -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
@@ -403,6 +406,12 @@ body {
   transform: translateX(-50%);
   z-index: 10;
   pointer-events: none;
+  /* Bigger than the shared .team-badge--small sizing (ID beats class, no
+     !important needed) — this is the only reminder of which side you're
+     on while actually playing, so it needs to read at a glance. */
+  font-size: 1.1rem;
+  padding: 7px 20px;
+  border-width: 3px;
 }
 
 #layout-root {
@@ -536,6 +545,7 @@ body {
 }
 .abxy-btn.inactive {
   opacity: 0.28;
+  filter: grayscale(1);
   cursor: default;
   pointer-events: none;
 }
@@ -547,6 +557,7 @@ body.tutorial-controlling .abxy-btn.btn-a.inactive,
 body.tutorial-controlling .abxy-btn.btn-b.inactive {
   pointer-events: auto;
   opacity: 0.6;
+  filter: none; /* they're genuinely usable right now — don't leave them looking disabled */
   cursor: pointer;
 }
 
@@ -683,6 +694,79 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   background: rgba(255,255,255,0.2);
 }
 
+.cheer-phrases {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.cheer-phrase-btn {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff8ec;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  padding: 6px 14px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+  transition: transform 0.07s, box-shadow 0.07s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cheer-phrase-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.35);
+  background: rgba(255,255,255,0.2);
+}
+
+.cheer-text-form {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.cheer-text-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1rem;
+  padding: 8px 12px;
+  border-radius: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff8ec;
+}
+.cheer-text-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.cheer-text-send {
+  font-size: 0.9rem;
+  font-weight: 900;
+  color: #2b2015;
+  background: linear-gradient(180deg, #ffe9a8 0%, #ffd000 100%);
+  border: 2px solid #a04000;
+  border-radius: 20px;
+  padding: 8px 16px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 #7a4a00;
+  transition: transform 0.07s, box-shadow 0.07s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.cheer-text-send:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #7a4a00;
+}
+.cheer-text-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .cheer-hint {
   font-size: 0.85rem;
   color: rgba(255,255,255,0.4);
@@ -696,7 +780,9 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
    buttons stay tappable through it. */
 #tutorial-reader {
   position: fixed;
-  top: 6px;
+  /* #team-badge-controls sits at top:6px underneath this — push below it
+     so the two don't stack on top of each other. */
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -723,7 +809,11 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
 #tutorial-reader-img {
   display: block;
   width: 100%;
-  max-height: 38vh;
+  /* #tutorial-reader moved from top:6px to top:58px to clear the team
+     badge (see above) — shrink by that same +52px so the bottom edge
+     lands back where it used to, instead of pushing the comic off the
+     bottom of the screen. */
+  max-height: calc(38vh - 52px);
   object-fit: contain;
   border-radius: 10px;
 }
@@ -742,7 +832,8 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
    device has reported ready but the room overall hasn't moved on yet. */
 #tutorial-waiting {
   position: fixed;
-  top: 8px;
+  /* Same overlap fix as #tutorial-reader — clears #team-badge-controls. */
+  top: 58px;
   left: 50%;
   transform: translateX(-50%);
   padding: 8px 18px;
@@ -770,11 +861,15 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   text-align: center;
 }
 
+/* Same painted-sign ink treatment as .role-tag/.hint above — this now
+   sits on the village background too, not the old dark starfield. */
 .prep-drawn-text {
   font-size: 1.3rem;
   font-weight: 900;
-  color: #ffe555;
-  text-shadow: 0 0 12px rgba(255, 220, 0, 0.6);
+  color: #c73a2a;
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
 }
 
 /* Host-only override panel — persistent overlay like #ingame-back-btn,
@@ -907,6 +1002,82 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   white-space: nowrap;
 }
 
+/* ── Controls help (tap-to-open control legend) ──
+   Sits in the otherwise-empty middle of .gamepad-layout (joystick sinks
+   left, ABXY sinks bottom-right — see above), clear of both in landscape
+   and the portrait rotate-90 hack since it's positioned relative to the
+   same #controls box those transform together with. */
+#controls-help-btn {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.45);
+  color: rgba(255, 255, 255, 0.85);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  font-family: 'Noto Sans TC', 'PingFang TC', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 900;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Hidden while browsing the how-to-play book — same phase that repurposes
+   A/B for page-flipping (see .abxy-btn rule above); the legend button
+   would just be one more thing competing for attention there. */
+body.tutorial-controlling #controls-help-btn { display: none; }
+
+#controls-help-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 8500;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(80vw, 320px);
+  padding: 14px 18px;
+  background: rgba(0, 0, 0, 0.78);
+  border: 2px solid #ffd000;
+  border-radius: 16px;
+  cursor: pointer; /* tap anywhere on it to dismiss */
+}
+
+.controls-help-title {
+  margin: 0 0 4px;
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #ffe555;
+  letter-spacing: 0.1em;
+  text-align: center;
+}
+
+.controls-help-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+}
+
+.controls-help-icon {
+  flex-shrink: 0;
+  width: 1.6em;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.controls-help-label {
+  font-size: 1rem;
+  color: #fff8ec;
+}
+
 /* ── In-game back-to-lobby (host only) ── */
 #ingame-back-btn {
   position: fixed;
@@ -930,3 +1101,69 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   border-color: #fff;
   color: #fff;
 }
+
+/* ── 村莊拍賣 (10_auction) — slider + lock, no joystick/buttons ── */
+.auction-panel {
+  width: min(92%, 460px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  background: rgba(20, 8, 40, 0.55);
+  border: 2px solid rgba(255, 208, 0, 0.3);
+  border-radius: 24px;
+}
+
+.auction-round {
+  font-size: 0.95rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #ffd700;
+}
+
+.auction-gift {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.auction-gift-icon { font-size: 2.4rem; }
+.auction-gift-label { font-size: 1.15rem; font-weight: 900; color: #fff8ec; }
+.auction-gift-note { font-size: 0.75rem; color: #a090cc; margin-top: 2px; }
+
+.auction-timer {
+  font-size: 1rem;
+  font-weight: 900;
+  color: #ff9d76;
+}
+
+.auction-bid-row {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #a090cc;
+}
+.auction-bid-value {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #ffd700;
+}
+
+.auction-slider {
+  width: 100%;
+  height: 34px;
+  accent-color: #ffd000;
+}
+.auction-slider:disabled { opacity: 0.5; }
+
+.auction-lock-btn { width: 100%; }
+.auction-lock-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  cursor: default;
+}
+
+.auction-status { font-size: 0.85rem; }

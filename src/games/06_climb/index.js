@@ -14,6 +14,7 @@
  * actual canvas.
  */
 import { truncateName } from '../../shared/nameDisplay.js';
+import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPreload.js';
 import { bgm, SFX } from './audio.js';
 
 const CANVAS_W = 1280;
@@ -80,6 +81,7 @@ for (const key of ALIEN_KEYS) {
   SPRITE_IMAGES[key] = { walk: loadImage(`06_climb/${key}/${key}_walk.png`) };
 }
 const backgroundImg = loadImage('06_climb/climb_background.png');
+const CLIMB_IMAGES = [backgroundImg, ...ALIEN_KEYS.map(key => SPRITE_IMAGES[key].walk)];
 const BG_PARALLAX = 0.35; // 背景捲動只有鏡頭的 35%,製造星空縱深感
 
 // --- 平台區塊模板 (手寫座標,不做真程序生成) --------------------------------
@@ -1218,17 +1220,10 @@ export default {
   cover: '06_climb/climb_cover.png',
 
   tutorial: {
-    comic: '06_climb/climb_intro.png',
-    goal: '3v3 往上爬！鏡頭會不斷上升，掉出畫面下方就被毒霧吞掉。淘汰對方全隊，或撐到時間結束時死得比對方少、爬得比對方高！',
-    controls: [
-      { key: '⬅➡', text: '左右移動' },
-      { key: 'Ⓐ', text: '跳躍' },
-      { key: 'Ⓑ', text: '推人（靠近任何人時把他推飛，自己會短暫定身）' },
-    ],
-    tips: [
-      '從上方踩「同隊隊友」的頭會自動借力跳，比一般跳高兩倍以上！',
-      '小心假平台、噴發地雷、旋轉鎚、鐵刺球、輸送帶和滑溜溜的濕地',
-      '時間到時先比陣亡人數，一樣多才比隊伍最高高度',
+    pages: [
+      '06_climb/tutorial/1.png',
+      '06_climb/tutorial/2.png',
+      '06_climb/tutorial/3.png',
     ],
   },
 
@@ -1268,6 +1263,7 @@ export default {
       steamParticles: [],
       steamSpawnAccum: 0,
       done: false,
+      assetsReady: false,
       _endCb: endCb,
       _globalState: globalState,
     };
@@ -1277,10 +1273,15 @@ export default {
     for (let i = 0; i < 3; i++) spawnNextChunk();
 
     bgm.start();
+    preloadImages(CLIMB_IMAGES).then(() => { if (cg) cg.assetsReady = true; });
+  },
+
+  preload() {
+    return preloadImages(CLIMB_IMAGES);
   },
 
   update(dt, globalState) {
-    if (!cg || cg.done) return;
+    if (!cg || cg.done || !cg.assetsReady) return;
 
     cg.timeLeft -= dt;
     if (cg.timeLeft <= 0) { cg.timeLeft = 0; checkTimeUp(globalState); return; }
@@ -1307,6 +1308,7 @@ export default {
 
   draw(ctx, w, h) {
     if (!cg) return;
+    if (!cg.assetsReady) { drawAssetLoadingPlaceholder(ctx, w, h, '爬高派對'); return; }
 
     // 等比縮放 + 上下/左右留黑邊,把 1280x720 邏輯畫面放進實際 canvas
     ctx.fillStyle = '#000';

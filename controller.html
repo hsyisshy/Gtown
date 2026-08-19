@@ -154,6 +154,15 @@
     <div id="team-badge-controls" class="team-badge team-badge--small"></div>
     <!-- game layout mounts here -->
     <div id="layout-root"></div>
+
+    <!-- Tap-to-open control legend for the currently mounted game — content
+         is set per-game in src/controller/main.js from that game's
+         controller-layout.js `controls` export (see setControlsHelp). -->
+    <button id="controls-help-btn" class="hidden">？</button>
+    <div id="controls-help-popup" class="hidden">
+      <p class="controls-help-title">操作說明</p>
+      <div id="controls-help-list"></div>
+    </div>
   </div>
 
   <!-- CHEERING: watching players during game -->
@@ -168,6 +177,18 @@
       <button class="cheer-btn" data-emoji="🎉">🎉</button>
       <button class="cheer-btn" data-emoji="❤️">❤️</button>
     </div>
+    <div class="cheer-phrases">
+      <button class="cheer-phrase-btn" data-text="加油！">加油！</button>
+      <button class="cheer-phrase-btn" data-text="衝啊！">衝啊！</button>
+      <button class="cheer-phrase-btn" data-text="好樣的！">好樣的！</button>
+      <button class="cheer-phrase-btn" data-text="別放棄！">別放棄！</button>
+      <button class="cheer-phrase-btn" data-text="太強了！">太強了！</button>
+      <button class="cheer-phrase-btn" data-text="反擊啊！">反擊啊！</button>
+    </div>
+    <form id="cheer-text-form" class="cheer-text-form">
+      <input id="cheer-text-input" class="cheer-text-input" type="text" maxlength="16" placeholder="自己打字應援…" autocomplete="off" />
+      <button type="submit" class="cheer-text-send">送出</button>
+    </form>
     <p class="cheer-hint">你的隊友正在比賽</p>
   </div>
 

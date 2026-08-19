@@ -5,6 +5,7 @@ import {
   PLATFORM,
   GAME_RULES,
 } from './config.js';
+import { bgm, SFX } from './audio.js';
 import { STACKING_OBJECTS } from './stacking-objects.generated.js';
 import {
   HELD_PIECE_SCREEN_Y,
@@ -222,12 +223,14 @@ function dropCurrentPiece() {
   game.phase = 'settling';
   game.moveAxis = 0;
   game.rotationAxis = 0;
+  SFX.crack();
 }
 
 function rerollCurrentShape() {
   if (!game || game.phase !== 'aiming' || !game.currentBody) return;
   const result = spendShapeChange(game.turnState, game.currentTeam);
   if (!result.accepted) return;
+  SFX.changeItem();
 
   const x = piecePosition(game.currentBody).x;
   const turnTime = game.turnTime;
@@ -494,6 +497,7 @@ export default {
     };
 
     startRound();
+    bgm.start();
   },
 
   update(dt) {
@@ -548,6 +552,7 @@ export default {
   },
 
   onEnd() {
+    bgm.stop();
     if (game?.engine) {
       Composite.clear(game.engine.world, false, true);
       Engine.clear(game.engine);

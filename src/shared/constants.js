@@ -6,7 +6,7 @@ export const MSG = {
   SELECT_GAME:     'select_game',
   RANDOM_PICK:     'random_pick',    // master requests the bingo-spin random pick
   SELECT_MAP:      'select_map',     // master picks a map { type, mapIndex }
-  CHEER:           'cheer',          // watcher sends emoji { type, emoji }
+  CHEER:           'cheer',          // watcher sends { type, emoji } or { type, text } (danmaku)
   REQUEST_RESULTS: 'request_results',
   SWITCH_TEAM:     'switch_team',    // lobby-only: self-serve red<->blue swap, no approval needed
   REQUEST_HOST:    'request_host',   // guest asks to become host; screen relays to current host
@@ -46,6 +46,7 @@ export const STATE_KEY = {
   PREP_UNLOCKED:  'prepUnlocked',    // boolean — true once the 20s grace period has elapsed with stragglers left
   TUTORIAL_PAGES: 'tutorialPages',   // array of image paths | null — each playing device browses its own copy at its own pace; empty/null means no paged tutorial is active right now
   TUTORIAL_READY: 'tutorialReady',   // { [deviceId]: true } — playing devices who've finished their own copy
+  TUTORIAL_PRELOAD: 'tutorialPreload', // array of image paths | null — sent at game-select time (well before TUTORIAL_PAGES) purely so every phone can start downloading its future tutorial reader images early; no controller UI reacts to it directly
 };
 
 // PREP phase timing (src/screen/main.js), shared so the controller's own

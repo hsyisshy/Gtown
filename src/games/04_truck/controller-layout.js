@@ -1,5 +1,10 @@
 import { createJoystick } from '../../controller/joystick.js';
 
+export const controls = [
+  { icon: 'Ⓐ', label: '按住轉圈' },
+  { icon: 'Ⓐ', label: '放開衝刺' },
+];
+
 let _joystick = null;
 let _cleanup = [];
 

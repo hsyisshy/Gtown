@@ -4,6 +4,8 @@ import { cappedDt } from '../shared/airconsole-wrapper.js';
 import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_READY_TIMEOUT_MS } from '../shared/constants.js';
 import { GAMES, UPCOMING_GAMES, getGame, getGameList } from '../games/registry.js';
 import { fillMissingTeams, toggleTeam, teamCounts } from '../shared/teams.js';
+import { truncateName } from '../shared/nameDisplay.js';
+import { preloadImageUrls } from '../shared/assetPreload.js';
 
 // ---------------------------------------------------------------------------
 // AirConsole
@@ -46,6 +48,11 @@ const sm = new StateMachine(onPhaseChange);
 
 // Cheer emojis — rendered on canvas, not in DOM
 const _cheerEmojis = [];
+
+// Cheer danmaku (scrolling text) — same idea, own lane-tracking state so
+// consecutive messages in a lane don't stack on top of each other.
+const _cheerDanmaku = [];
+const _lastCheerTextAt = {}; // { [deviceId]: ms } — per-device throttle, independent of the controller's own cooldown
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -285,6 +292,10 @@ airconsole.onReady = function () {
   resizeCanvas();
   renderLoop();
   broadcastGameList();
+  // Cover art pop-in on first entering the game-select grid — not the "fast
+  // input outruns the asset" bug the per-game preload() fixes, just the
+  // same DOM-<img> loading everyone already knows, front-loaded early.
+  preloadImageUrls([...GAMES, ...UPCOMING_GAMES].map(g => g.cover).filter(Boolean));
 };
 
 airconsole.onConnect = function (deviceId) {
@@ -401,6 +412,7 @@ airconsole.onMessage = function (deviceId, data) {
     case MSG.CHEER: {
       if (!sm.is(PHASE.PLAYING)) return;
       if (data.emoji) addCheerEmoji(data.emoji, deviceId);
+      else if (data.text) addCheerDanmaku(data.text, deviceId);
       break;
     }
 
@@ -584,6 +596,30 @@ function handleGameSelected(gameId) {
   state.currentGame = game;
   state.selectedMap = null;
   state.activeMaps = null;
+
+  // Fire-and-forget as early as possible — PREP's reveal spin + ready-roster
+  // wait, then the how-to-play card, all give this a multi-second head start
+  // before onStart() actually needs the assets. Each game's onStart() awaits
+  // its own preload() too, so this is purely an optimization, never required
+  // for correctness — a game with no preload() (nothing to front-load, or
+  // it wires it up on its own like painting-sticker's per-match painting
+  // pick) just no-ops here.
+  game.preload?.();
+
+  // Same head start for the how-to-play card's own image(s). The two tutorial
+  // formats are rendered on different devices: a single `comic` is drawn on
+  // THIS screen (showTutorial()'s classic branch), so preload it here; a
+  // paged reader is browsed on each PLAYING phone's own copy instead (see
+  // STATE_KEY.TUTORIAL_PRELOAD below) — preloading `pages` here would just
+  // waste the screen's own bandwidth on images it never displays.
+  if (game.tutorial?.comic) preloadImageUrls([game.tutorial.comic]);
+
+  // Broadcast paged-tutorial image paths to every connected phone right now,
+  // well before beginMatch()'s showTutorial() actually needs them — same
+  // "PREP window as free head start" idea, just for a device this screen
+  // can't preload on behalf of. Purely a hint: no controller UI reacts to
+  // this key, it only triggers a background preload (see controller/main.js).
+  airconsole.setCustomDeviceStateProperty(STATE_KEY.TUTORIAL_PRELOAD, game.tutorial?.pages ?? null);
 
   // Games can resolve a dynamic mode list from the current roster — e.g.
   // volleyball's 1v1 / 2v2, where 2v2 is greyed unless both teams field a
@@ -1079,6 +1115,71 @@ function tickAndDrawCheerEmojis(dt) {
 }
 
 // ---------------------------------------------------------------------------
+// Cheer danmaku system (scrolling "(name)：text" bullets, own canvas layer)
+// ---------------------------------------------------------------------------
+const CHEER_TEXT_MAX_CHARS  = 20;   // defensive re-clip — controller already caps via maxlength
+const CHEER_TEXT_MIN_GAP_MS = 1000; // per-device throttle, independent of the controller's own cooldown
+const DANMAKU_SPEED  = 140; // px/sec, leftward
+const DANMAKU_LANES  = 5;
+const DANMAKU_GAP_PX = 40;  // min horizontal gap enforced between successive bullets sharing a lane
+
+let _danmakuClock = 0; // local clock driven by dt, not wall-clock — stays in lockstep with the render loop
+const _danmakuLaneFreeAt = new Array(DANMAKU_LANES).fill(0);
+
+function pickDanmakuLane(textWidth) {
+  // Least-recently-scheduled lane — not a strict collision guarantee under
+  // heavy simultaneous cheering, but self-corrects and never blocks a send.
+  let best = 0;
+  for (let i = 1; i < DANMAKU_LANES; i++) {
+    if (_danmakuLaneFreeAt[i] < _danmakuLaneFreeAt[best]) best = i;
+  }
+  _danmakuLaneFreeAt[best] = Math.max(_danmakuLaneFreeAt[best], _danmakuClock) + (textWidth + DANMAKU_GAP_PX) / DANMAKU_SPEED;
+  return best;
+}
+
+function addCheerDanmaku(text, deviceId) {
+  const now = performance.now();
+  if (now - (_lastCheerTextAt[deviceId] ?? -Infinity) < CHEER_TEXT_MIN_GAP_MS) return;
+  const trimmed = String(text).trim().slice(0, CHEER_TEXT_MAX_CHARS);
+  if (!trimmed) return;
+  _lastCheerTextAt[deviceId] = now;
+
+  const name  = truncateName(state.players[deviceId]?.name ?? '???');
+  const label = `${name}：${trimmed}`;
+  const color = TEAM_COLOR[state.teams?.[deviceId]] ?? '#ffe555';
+
+  const fontSize = Math.floor(canvas.height * 0.032);
+  ctx.font = `700 ${fontSize}px "Noto Sans TC", sans-serif`;
+  const width = ctx.measureText(label).width;
+
+  _cheerDanmaku.push({ label, color, width, x: canvas.width + 20, lane: pickDanmakuLane(width) });
+}
+
+function tickAndDrawCheerDanmaku(dt) {
+  _danmakuClock += dt;
+  if (!_cheerDanmaku.length) return;
+  const fontSize = Math.floor(canvas.height * 0.032);
+  const laneH    = fontSize * 1.6;
+  const top      = canvas.height * 0.06;
+  ctx.save();
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font         = `700 ${fontSize}px "Noto Sans TC", sans-serif`;
+  ctx.lineWidth    = 4;
+  for (let i = _cheerDanmaku.length - 1; i >= 0; i--) {
+    const d = _cheerDanmaku[i];
+    d.x -= DANMAKU_SPEED * dt;
+    if (d.x + d.width < -20) { _cheerDanmaku.splice(i, 1); continue; }
+    const y = top + d.lane * laneH + laneH / 2;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
+    ctx.strokeText(d.label, d.x, y);
+    ctx.fillStyle = d.color;
+    ctx.fillText(d.label, d.x, y);
+  }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------------------
 // Phase change
 // ---------------------------------------------------------------------------
 function onPhaseChange(newPhase) {
@@ -1122,6 +1223,7 @@ function renderLoop(timestamp = 0) {
     if (state.currentGame?.draw) state.currentGame.draw(ctx, canvas.width, canvas.height, state);
     else drawPlayingPlaceholder();
     tickAndDrawCheerEmojis(dtSec);
+    tickAndDrawCheerDanmaku(dtSec);
   }
 }
 
@@ -1164,8 +1266,9 @@ function renderLobby() {
   });
 
   // Density tier per roster size so ~20 players still fit on screen:
-  // single column while roomy, then 2 / 3 columns with smaller cards.
-  const tier = n => (n <= 6 ? 'roomy' : n <= 12 ? 'medium' : 'dense');
+  // always at least 2 columns (even for a single player), then 3 columns
+  // with smaller cards once a team gets big.
+  const tier = n => (n <= 12 ? 'medium' : 'dense');
   teamRedListEl.dataset.size  = tier(teamRedListEl.children.length);
   teamBlueListEl.dataset.size = tier(teamBlueListEl.children.length);
 

@@ -25,6 +25,7 @@
  * even though our dt is variable.
  */
 import { truncateName } from '../../shared/nameDisplay.js';
+import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPreload.js';
 import { bgm, SFX } from './audio.js';
 
 const W = 900, H = 600;
@@ -95,6 +96,7 @@ const obsBigImg = loadImg('08_fall/obs/obs2.png');
 const starImg = loadImg('08_fall/item/star.png');
 const gemImg = loadImg('08_fall/item/diamond.png');
 const bgImg = loadImg('08_fall/background.png');
+const FALL_IMAGES = [...playerImages, obsSmallImg, obsBigImg, starImg, gemImg, bgImg];
 
 let fg = null; // module-level fall-game state
 
@@ -686,15 +688,21 @@ export default {
       screenFlash: 0,
       bigHazards: [], bigHazardTimer: 3, lastBigHazardPiece: null,
       players,
+      assetsReady: false,
       _endCb: endCb,
       _globalState: globalState,
     };
     startSolid();
     bgm.start();
+    preloadImages(FALL_IMAGES).then(() => { if (fg) fg.assetsReady = true; });
+  },
+
+  preload() {
+    return preloadImages(FALL_IMAGES);
   },
 
   update(dt, globalState) {
-    if (!fg || fg.done) return;
+    if (!fg || fg.done || !fg.assetsReady) return;
     fg.t += dt;
     const frames = dt * 60;
 
@@ -908,6 +916,7 @@ export default {
 
   draw(ctx, w, h) {
     if (!fg) return;
+    if (!fg.assetsReady) { drawAssetLoadingPlaceholder(ctx, w, h, '危台求生'); return; }
 
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);

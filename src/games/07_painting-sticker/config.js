@@ -21,6 +21,19 @@ export const BONUS_CAP = 8;
 // back to the hub's results phase.
 export const RESULT_HOLD_SECONDS = 4;
 
+// Shared power-up that spawns in the middle strip for either team to grab —
+// ported from painting_sticker/game.js's ITEM_DEFS (minus the never-implemented
+// "強光" glare effect, which only existed in the design doc, not the code).
+export const ITEM_DEFS = [
+  { type: 'stun', icon: '🌀', name: '暈眩', desc: '讓對方停止動作 5 秒' },
+  { type: 'shake', icon: '〜', name: '震動', desc: '把對方畫布上 5 塊碎片震回碎片架' },
+  { type: 'peek', icon: '👁', name: '偷窺', desc: '讓自己的畫布透出原畫殘影 5 秒' },
+];
+export const ITEM_EFFECT_SECONDS = 5;
+export const ITEM_SHAKE_COUNT = 5;
+export const ITEM_SPAWN_INTERVAL = 30; // seconds between spawns
+export const ITEM_SPAWN_CUTOFF = 30; // stop spawning once this little time remains
+
 // Overrides tear-config.json's cols/rows — piece count is fixed per team
 // instead of per-painting.
 export const TEAR_CONFIG = {
@@ -57,10 +70,12 @@ export const RACK_Y = CONTENT_TOP + HEADER_H + GAP_AFTER_HEADER;
 export const CANVAS_Y = RACK_Y + RACK_H + GAP_AFTER_RACK;
 export const CANVAS_H = CONTENT_BOTTOM - CANVAS_Y;
 
-export const PREVIEW_H = 260;
-const MID_GAP = 20;
+export const PREVIEW_H = 200;
+export const ITEMS_H = 150;
+const MID_GAP = 16;
 export const PREVIEW_Y = CONTENT_TOP;
-export const SCORE_Y = PREVIEW_Y + PREVIEW_H + MID_GAP;
+export const ITEMS_Y = PREVIEW_Y + PREVIEW_H + MID_GAP;
+export const SCORE_Y = ITEMS_Y + ITEMS_H + MID_GAP;
 export const SCORE_H = CONTENT_BOTTOM - SCORE_Y;
 
 export const TEAM_LABEL = { red: '紅隊', blue: '藍隊' };

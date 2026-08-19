@@ -1,5 +1,6 @@
 import './style.css';
 import { classifyMediaError, teardownAudio, throttledMessage } from '../shared/airconsole-wrapper.js';
+import { preloadImageUrls } from '../shared/assetPreload.js';
 import { PHASE, MSG, STATE_KEY, TEAM_COLOR, TOTAL_GAME_SLOTS } from '../shared/constants.js';
 import * as defaultLayout from './layouts/default.js';
 
@@ -64,8 +65,8 @@ const prepReadyCount = document.getElementById('prep-ready-count');
 // drown gameplay.
 // ---------------------------------------------------------------------------
 const MENU_BTN_SELECTOR = [
-  '.primary-btn', '.secondary-btn', '.cheer-btn',
-  '.game-select-btn', '.map-select-btn', '#ingame-back-btn',
+  '.primary-btn', '.secondary-btn', '.cheer-btn', '.cheer-phrase-btn', '.cheer-text-send',
+  '.game-select-btn', '.map-select-btn', '#ingame-back-btn', '#controls-help-btn',
 ].join(', ');
 
 // One-tap buttons get the hover cue as their tap sound — it reads better
@@ -135,6 +136,9 @@ enableRotatedTouchScroll(gameSelectList);
 enableRotatedTouchScroll(mapSelectList);
 const layoutRoot     = document.getElementById('layout-root');
 const youAreUpEl     = document.getElementById('you-are-up');
+const controlsHelpBtn   = document.getElementById('controls-help-btn');
+const controlsHelpPopup = document.getElementById('controls-help-popup');
+const controlsHelpList  = document.getElementById('controls-help-list');
 
 // ---------------------------------------------------------------------------
 // Per-game layout loading via import.meta.glob
@@ -153,8 +157,14 @@ async function mountLayout(gameId) {
   const active = state._activeLayout;
   if (active) { active.unmount(); state._activeLayout = null; }
 
-  const layoutKey = Object.keys(gameLayouts)
-    .find(k => k.includes(`/${gameId}/controller-layout`));
+  // Folder names carry a numeric prefix (01_hospital, 03_pong, ...) that
+  // registry ids don't (hospital, pong, ...), so a plain substring match
+  // against the glob key never hit — every game silently fell back to
+  // layouts/default.js. Strip the prefix before comparing.
+  const layoutKey = Object.keys(gameLayouts).find(k => {
+    const folder = k.match(/\/([^/]+)\/controller-layout\.js$/)?.[1];
+    return folder?.replace(/^\d+_/, '') === gameId;
+  });
   let layout = defaultLayout;
   if (layoutKey) {
     try { layout = await gameLayouts[layoutKey](); }
@@ -167,6 +177,7 @@ async function mountLayout(gameId) {
 
   layout.mount(layoutRoot, sendInput);
   state._activeLayout = layout;
+  setControlsHelp(layout.controls ?? []);
 }
 
 function unmountLayout() {
@@ -174,6 +185,23 @@ function unmountLayout() {
   state._activeLayout = null;
   state._activeLayoutGameId = null;
   layoutRoot.innerHTML = '';
+  setControlsHelp([]);
+}
+
+// ---------------------------------------------------------------------------
+// Controls help — tap-to-open legend for the currently mounted game, filled
+// in from that game's controller-layout.js `controls` export. Games with
+// no export (or an empty one) simply don't show the button.
+// ---------------------------------------------------------------------------
+function setControlsHelp(controls) {
+  controlsHelpPopup.classList.add('hidden'); // switching games closes any open popup
+  controlsHelpBtn.classList.toggle('hidden', !controls?.length);
+  controlsHelpList.innerHTML = (controls ?? []).map(({ icon, label }) => `
+    <div class="controls-help-row">
+      <span class="controls-help-icon">${icon}</span>
+      <span class="controls-help-label">${label}</span>
+    </div>
+  `).join('');
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +228,10 @@ airconsole.onMessage = function (deviceId, data) {
   if (data.type === 'host_request') showHostRequest(data.fromId, data.fromName);
   if (data.type === 'host_denied') showToast('房主拒絕了你的申請');
   if (data.type === 'not_enough_players') showToast(data.reason || '人數不足，無法開始這個遊戲');
+  // Anything else is a game-specific message (e.g. auction's per-round bid
+  // info) — hand it to whichever layout is mounted so games can opt into
+  // their own message types without this file knowing about them.
+  state._activeLayout?.onMessage?.(data);
 };
 
 function flashHit() {
@@ -245,6 +277,14 @@ airconsole.onCustomDeviceStateChange = function (deviceId, customData) {
 
   if (customData[STATE_KEY.PREP_UNLOCKED] !== undefined) {
     state.prepUnlocked = customData[STATE_KEY.PREP_UNLOCKED];
+  }
+
+  if (customData[STATE_KEY.TUTORIAL_PRELOAD] !== undefined) {
+    // Fire-and-forget — arrives right when the host picks a game, well
+    // before this device's own TUTORIAL_PAGES lands post-PREP. No UI reacts
+    // to this key; it only warms the image cache so the reader (once it
+    // actually opens) doesn't show blank pages while it catches up.
+    preloadImageUrls(customData[STATE_KEY.TUTORIAL_PRELOAD]);
   }
 
   if (customData[STATE_KEY.TUTORIAL_PAGES] !== undefined) {
@@ -593,6 +633,39 @@ document.querySelectorAll('.cheer-btn').forEach(btn => {
   });
 });
 
+// Danmaku cheers — preset phrase chips + free text both go through the same
+// throttled sender so nobody can flood the screen with one held-down key.
+const CHEER_TEXT_COOLDOWN_MS = 1200;
+let cheerTextCooldownUntil = 0;
+const cheerTextInput = document.getElementById('cheer-text-input');
+const cheerTextForm   = document.getElementById('cheer-text-form');
+const cheerTextSend   = document.querySelector('.cheer-text-send');
+
+function sendCheerText(text) {
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  const now = performance.now();
+  if (now < cheerTextCooldownUntil) return;
+  cheerTextCooldownUntil = now + CHEER_TEXT_COOLDOWN_MS;
+  airconsole.message(AirConsole.SCREEN, { type: MSG.CHEER, text: trimmed });
+  if (cheerTextSend) {
+    cheerTextSend.disabled = true;
+    setTimeout(() => { cheerTextSend.disabled = false; }, CHEER_TEXT_COOLDOWN_MS);
+  }
+}
+
+document.querySelectorAll('.cheer-phrase-btn').forEach(btn => {
+  btn.addEventListener('click', () => sendCheerText(btn.dataset.text ?? ''));
+});
+
+cheerTextForm?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!cheerTextInput) return;
+  sendCheerText(cheerTextInput.value);
+  cheerTextInput.value = '';
+  cheerTextInput.blur(); // dismiss the keyboard so the next cheer tap isn't blocked by it
+});
+
 // ---------------------------------------------------------------------------
 // Button bindings
 // ---------------------------------------------------------------------------
@@ -689,6 +762,15 @@ ingameBackBtn.addEventListener('click', () => {
       ingameBackBtn.textContent = '重選遊戲';
     }, 3000);
   }
+});
+
+// Controls help — tap the "?" to open the legend, tap it again or tap the
+// popup itself to close.
+controlsHelpBtn.addEventListener('click', () => {
+  controlsHelpPopup.classList.toggle('hidden');
+});
+controlsHelpPopup.addEventListener('click', () => {
+  controlsHelpPopup.classList.add('hidden');
 });
 
 // ---------------------------------------------------------------------------

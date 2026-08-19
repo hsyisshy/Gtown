@@ -58,7 +58,9 @@ function voronoiCellPolygons(points, w, h) {
   return polys;
 }
 
-function tearEdge(p1, p2, depth, iters, decay, rand) {
+// Exported so index.js can reuse the same midpoint-displacement recipe for
+// the "torn paper" panel edges (not just piece cuts).
+export function tearEdge(p1, p2, depth, iters, decay, rand) {
   let pts = [p1, p2];
   for (let k = 0; k < iters; k++) {
     const next = [pts[0]];

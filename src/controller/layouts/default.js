@@ -1,5 +1,9 @@
 import { createJoystick } from '../joystick.js';
 
+// No per-game legend to show here — this only mounts when a game's own
+// controller-layout.js failed to load (see mountLayout in main.js).
+export const controls = [];
+
 let _joystick = null;
 let _cleanup  = [];
 

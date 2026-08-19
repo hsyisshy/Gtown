@@ -1,5 +1,9 @@
 import { createJoystick } from '../../controller/joystick.js';
 
+export const controls = [
+  { icon: '🕹️', label: '移動' },
+];
+
 let _joystick = null;
 
 export function mount(root, sendFn) {
