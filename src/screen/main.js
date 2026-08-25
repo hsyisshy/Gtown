@@ -1,7 +1,7 @@
 import './style.css';
 import { StateMachine } from '../shared/state-machine.js';
 import { cappedDt } from '../shared/airconsole-wrapper.js';
-import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_READY_TIMEOUT_MS } from '../shared/constants.js';
+import { PHASE, MSG, STATE_KEY, MAX_PLAYERS, TEAM_COLOR, TOTAL_GAME_SLOTS, PREP_REEL_DURATION_MS, PREP_READY_TIMEOUT_MS, TUTORIAL_READY_TIMEOUT_MS, BGM_RELATIVE_GAIN } from '../shared/constants.js';
 import { GAMES, UPCOMING_GAMES, getGame, getGameList } from '../games/registry.js';
 import { fillMissingTeams, toggleTeam, teamCounts } from '../shared/teams.js';
 import { truncateName } from '../shared/nameDisplay.js';
@@ -26,6 +26,8 @@ const state = {
   selectedMap: null,     // number | null
   activeMaps: null,      // maps/modes currently on the picker (may carry .enabled)
   lastWinner: null,      // 'red' | 'blue' | null — for results display
+  lastRoundScore: null,  // { label, red, blue } | null — the game's own final score, see endGame()
+  _prevTeamScores: null, // { red, blue } — teamScores snapshot from just before the latest increment, for the results count-up animation
   initialized: false,
   currentGame: null,
   tutorialActive: false, // how-to-play card is up — game updates/inputs hold
@@ -42,6 +44,24 @@ const state = {
 function getHostId() {
   if (state.hostId != null && state.players[state.hostId]) return state.hostId;
   return airconsole.getMasterControllerDeviceId();
+}
+
+// The host never carries a team assignment (they run the room, they never
+// play) — every place that used to fill state.teams from "everyone
+// connected" needs to fill from this instead, or the "assign anyone
+// missing a team" safety nets would immediately re-add the host.
+function assignableIds() {
+  const hostId = String(getHostId());
+  return Object.keys(state.players).filter((id) => id !== hostId);
+}
+
+// Defensive invariant: call after anything that could change who the host
+// is (connect, disconnect, host transfer) — strips a team assignment the
+// current host might be carrying from a moment ago when they were still a
+// regular player.
+function stripHostFromTeams() {
+  const hostId = getHostId();
+  if (state.teams[hostId] !== undefined) delete state.teams[hostId];
 }
 
 const sm = new StateMachine(onPhaseChange);
@@ -65,6 +85,7 @@ const viewMapSelect      = document.getElementById('view-map-select');
 const viewPrep           = document.getElementById('view-prep');
 const viewResults        = document.getElementById('view-results');
 const playerCountEl      = document.getElementById('player-count');
+const hostCardEl         = document.getElementById('host-card');
 const teamRedListEl      = document.getElementById('team-red-list');
 const teamBlueListEl     = document.getElementById('team-blue-list');
 const gameGridEl         = document.getElementById('game-grid');
@@ -146,14 +167,18 @@ function fadeBgm(target, ms = BGM_PHASE_FADE_MS) {
   _bgmStepPerTick = (target - _bgmBase) / Math.max(1, ms / BGM_TICK_MS);
 }
 
+// The only place BGM_VOLUME should reach an actual <audio> element — see
+// BGM_RELATIVE_GAIN's comment in shared/constants.js.
+function bgmGain() { return BGM_VOLUME * BGM_RELATIVE_GAIN; }
+
 function startBgm() {
   _bgmShouldPlay = true;
-  if (!bgm.paused) { fadeBgm(BGM_VOLUME); return; }
+  if (!bgm.paused) { fadeBgm(bgmGain()); return; }
   // Autoplay policy may reject before the page has a user gesture —
   // retry on the next tap/click, same fallback as the intro video.
-  bgm.play().then(() => fadeBgm(BGM_VOLUME)).catch(() => {
+  bgm.play().then(() => fadeBgm(bgmGain())).catch(() => {
     document.addEventListener('pointerdown', () => {
-      bgm.play().then(() => fadeBgm(BGM_VOLUME)).catch(() => {});
+      bgm.play().then(() => fadeBgm(bgmGain())).catch(() => {});
     }, { once: true });
   });
 }
@@ -174,13 +199,15 @@ settingsBtn.addEventListener('click', () => settingsPanel.classList.toggle('hidd
 
 bgmSlider.value = Math.round(BGM_VOLUME * 100);
 sfxSlider.value = Math.round(SFX_VOLUME * 100);
-introVideo.volume = BGM_VOLUME; // the intro soundtrack is "背景音樂" too
+introVideo.volume = bgmGain(); // the intro soundtrack is "背景音樂" too
 
 bgmSlider.addEventListener('input', () => {
   BGM_VOLUME = bgmSlider.value / 100;
   localStorage.setItem('setting_bgm_volume', String(BGM_VOLUME));
-  introVideo.volume = BGM_VOLUME;
-  // In-game BGMs (shared/loopingBgm.js) listen for this to retarget live
+  introVideo.volume = bgmGain();
+  // In-game BGMs (shared/loopingBgm.js) listen for this to retarget live —
+  // sent as the raw slider fraction; loopingBgm.js applies its own
+  // BGM_RELATIVE_GAIN when it actually reaches an <audio> element.
   window.dispatchEvent(new CustomEvent('bgm-volume-change', { detail: BGM_VOLUME }));
   // Quick retarget while a menu wants BGM, so the slider feels live instead
   // of easing over the slow 2.2s menu fade. A previous drag to 0 pauses the
@@ -188,7 +215,7 @@ bgmSlider.addEventListener('input', () => {
   // phases (gameplay) just keep the new value for the next startBgm().
   if (_bgmShouldPlay) {
     if (bgm.paused) bgm.play().catch(() => {});
-    fadeBgm(BGM_VOLUME, 200);
+    fadeBgm(bgmGain(), 200);
   }
 });
 
@@ -215,9 +242,21 @@ const clickSfx = new Audio('bottom_hoverclick.mp3');
 hoverSfx.preload = 'auto';
 clickSfx.preload = 'auto';
 
+// PREP's slot-machine reel spin (see runReveal/spinReel) — a dedicated
+// spin+land sound instead of reusing the generic click, played once when
+// the reel(s) start scrolling. public/drawppl.mp3 is trimmed to its last
+// ~3.5s (the source clip's climax + decay tail, cut from a ~6s original
+// with a long quiet buildup at the front that didn't suit a reel spin) —
+// see PREP_REEL_DURATION_MS in shared/constants.js, tuned to this trimmed
+// length so the visual landing and the sound's natural end line up instead
+// of one cutting the other off.
+const reelSpinSfx = new Audio('drawppl.mp3');
+reelSpinSfx.preload = 'auto';
+
 function applyScreenSfxVolume() {
   clickSfx.volume = SFX_VOLUME;
   hoverSfx.volume = SFX_VOLUME * 0.7;
+  reelSpinSfx.volume = SFX_VOLUME;
 }
 applyScreenSfxVolume();
 
@@ -303,7 +342,10 @@ airconsole.onConnect = function (deviceId) {
   state.players[deviceId] = { name, score: 0 };
   // Only the new player gets assigned (to whichever team is smaller) —
   // existing players (and any manual switch-team swaps) are left alone.
-  state.teams = fillMissingTeams(state.teams, Object.keys(state.players));
+  // Excludes the host: matters for the very first connection, which
+  // AirConsole auto-promotes to master.
+  state.teams = fillMissingTeams(state.teams, assignableIds());
+  stripHostFromTeams();
   updateMaster();
   broadcastState();
   renderLobby();
@@ -315,6 +357,9 @@ airconsole.onDisconnect = function (deviceId) {
   delete state.activePlayers[deviceId];
   delete state.playerPlayCounts[deviceId];
   delete state.teams[deviceId];
+  // A host disconnect can fall back to a new AirConsole master who was a
+  // regular (team-having) player a moment ago — strip it.
+  stripHostFromTeams();
   updateMaster();
   broadcastState();
   renderLobby();
@@ -329,7 +374,9 @@ airconsole.onMessage = function (deviceId, data) {
     case MSG.REQUEST_START: {
       if (deviceId !== masterId) return;
       if (!sm.is(PHASE.LOBBY)) return;
-      const ids = Object.keys(state.players);
+      // Need at least 2 PLAYABLE (non-host) participants — the host alone
+      // never counts toward a team.
+      const ids = assignableIds();
       if (ids.length < 2) return;
       // Safety net only — everyone should already have a team from
       // onConnect/switch-team. Never reshuffle existing assignments here.
@@ -450,6 +497,9 @@ airconsole.onMessage = function (deviceId, data) {
       if (deviceId !== masterId) return;
       const targetId = Number(data.targetId);
       if (!state.players[targetId]) return;       // requester already left
+      const oldHostId = masterId; // stepping down — rejoins a team below
+      delete state.teams[targetId];                              // new host must not carry a team
+      state.teams = fillMissingTeams(state.teams, [oldHostId]);   // old host rejoins the smaller team
       state.hostId = targetId;
       updateMaster();
       broadcastState();
@@ -754,7 +804,6 @@ function beginMatch() {
 // CSS-transition scroll (not a JS tick loop): the landing value is set as
 // the literal final transform, so it can never overshoot/undershoot.
 // ---------------------------------------------------------------------------
-const REEL_ROW_H = 64;          // px — must match .reel-row height in style.css
 const REEL_FILLER_COUNT = 24;   // decorative rows scrolled through before landing
 
 function buildReelRows(candidateIds, winnerId) {
@@ -783,7 +832,13 @@ function renderReel(containerEl, candidateIds, winnerId) {
 }
 
 function spinReel(strip) {
-  const targetY = -(REEL_FILLER_COUNT - 1) * REEL_ROW_H;
+  // Row height is now fluid (percentage of .reel-window, itself sized by
+  // flex+clamp so 1-3 reels never overflow — see style.css), so it's
+  // measured off the live DOM instead of a hardcoded constant that would
+  // drift out of sync with it. offsetHeight ignores the transform we're
+  // about to animate, so this reads the row's true layout height.
+  const rowH = strip.firstElementChild?.offsetHeight || 0;
+  const targetY = -(REEL_FILLER_COUNT - 1) * rowH;
   strip.style.transition = 'none';
   strip.style.transform = 'translateY(0px)';
   // Force a reflow so the reset above actually commits before the
@@ -802,7 +857,7 @@ function runReveal(redIds, blueIds, redPicked, bluePicked, ppt, gen) {
     if (!needsSpin) {
       const msg = document.createElement('div');
       msg.className = 'prep-instant';
-      msg.textContent = pickedIds.length ? '✅ 全隊上場！' : '（本隊無人可上場）';
+      msg.textContent = pickedIds.length ? '全隊上場！' : '（本隊無人可上場）';
       containerEl.appendChild(msg);
       return null;
     }
@@ -817,7 +872,7 @@ function runReveal(redIds, blueIds, redPicked, bluePicked, ppt, gen) {
   prepCountdownEl.classList.add('hidden');
 
   if (anySpin) {
-    playScreenSfx(clickSfx); // spin-start whoosh
+    playScreenSfx(reelSpinSfx); // slot-machine spin+land sound
     // Launch every reel (both teams, all slots) in the same tick so they
     // visually start together.
     requestAnimationFrame(() => {
@@ -854,26 +909,56 @@ function startPrepCountdown(seconds) {
   _prepCountdownInterval = setInterval(tick, 1000);
 }
 
+// One box per team (mirrors the reel boxes above it) instead of a flat pile
+// of individual pills — a big roster used to wrap across several rows and
+// push the later ones off the bottom of this un-scrollable overlay. Shared
+// by PREP's ready-to-play roster and the tutorial's read-the-comic roster —
+// same shape (grouped by team, each member either done or still waiting),
+// just a different "done" predicate and status wording.
+function buildRosterTeamBox(team, label, ids, isReady, readyText, pendingText) {
+  const box = document.createElement('div');
+  box.className = `prep-roster-team-box team-${team}`;
+
+  const header = document.createElement('div');
+  header.className = 'prep-roster-team-header';
+  header.textContent = label;
+  box.appendChild(header);
+
+  const list = document.createElement('div');
+  list.className = 'prep-roster-list';
+  const members = ids.filter(id => (state.teams[id] ?? 'red') === team);
+  if (!members.length) {
+    const empty = document.createElement('div');
+    empty.className = 'prep-roster-empty';
+    empty.textContent = '（本隊無人上場）';
+    list.appendChild(empty);
+  } else {
+    members.forEach(id => {
+      const ready = isReady(id);
+      const row = document.createElement('div');
+      row.className = 'prep-roster-member' + (ready ? ' ready' : '');
+      row.innerHTML = `
+        <span class="prep-roster-member-name">${state.players[id]?.name ?? '???'}</span>
+        <span class="prep-roster-member-status">${ready ? readyText : pendingText}</span>
+      `;
+      list.appendChild(row);
+    });
+  }
+  box.appendChild(list);
+  return box;
+}
+
 function renderPrepRoster() {
   prepRosterEl.innerHTML = '';
-  const entries = Object.entries(state.activePlayers).filter(([, role]) => role === 'playing');
-  entries.forEach(([id]) => {
-    const ready = !!state.prepReady[id];
-    const team = state.teams[id] ?? 'red';
-    const row = document.createElement('div');
-    row.className = 'prep-roster-row' + (ready ? ' ready' : '');
-    row.innerHTML = `
-      <span class="prep-roster-dot ${team}"></span>
-      <span class="prep-roster-name">${state.players[id]?.name ?? '???'}</span>
-      <span class="prep-roster-status">${ready ? '✅ 已準備' : '⏳ 準備中…'}</span>
-    `;
-    prepRosterEl.appendChild(row);
-  });
+  const ids = Object.entries(state.activePlayers).filter(([, role]) => role === 'playing').map(([id]) => id);
+  const isReady = id => !!state.prepReady[id];
+  prepRosterEl.appendChild(buildRosterTeamBox('red',  '🔴 紅隊', ids, isReady, '已準備', '準備中…'));
+  prepRosterEl.appendChild(buildRosterTeamBox('blue', '🔵 藍隊', ids, isReady, '已準備', '準備中…'));
 
   if (state.prepUnlocked) {
     clearInterval(_prepCountdownInterval);
     prepCountdownEl.classList.remove('hidden');
-    prepCountdownEl.textContent = '⏰ 時間到！房主可以強制開始或重抽尚未準備的人';
+    prepCountdownEl.textContent = '時間到！房主可以強制開始或重抽尚未準備的人';
   }
 }
 
@@ -888,10 +973,12 @@ function renderPrepRoster() {
 // ---------------------------------------------------------------------------
 const TUTORIAL_SECONDS = 15;
 const tutorialOverlay    = document.getElementById('tutorial-overlay');
+const tutorialPanelEl    = document.getElementById('tutorial-panel');
 const tutorialClassicEl  = document.getElementById('tutorial-classic');
 const tutorialStartBtn   = document.getElementById('tutorial-start-btn');
 const tutorialCountdown  = document.getElementById('tutorial-countdown');
 const tutorialPagedEl    = document.getElementById('tutorial-paged');
+const tutorialPagesEl    = document.getElementById('tutorial-pages');
 const tutorialRosterEl   = document.getElementById('tutorial-roster');
 const tutorialRosterCountdownEl = document.getElementById('tutorial-roster-countdown');
 let _tutorialTimer = null;
@@ -900,7 +987,8 @@ function showTutorial(game) {
   const tut = game.tutorial;
   if (!tut) return;
   state.tutorialActive = true;
-  document.getElementById('tutorial-title').textContent = `${game.emoji} ${game.name}`;
+  document.getElementById('tutorial-title').textContent = game.name;
+  tutorialPanelEl.classList.toggle('tutorial-panel--paged', !!tut.pages?.length);
 
   if (tut.pages?.length) {
     tutorialClassicEl.classList.add('hidden');
@@ -981,10 +1069,22 @@ tutorialStartBtn.addEventListener('click', () => playScreenSfx(clickSfx));
 let _tutorialReadyTimer = null;
 let _tutorialCountdownInterval = null;
 
+function renderTutorialPages(pages) {
+  tutorialPagesEl.innerHTML = '';
+  pages.forEach((src, i) => {
+    const img = document.createElement('img');
+    img.className = 'tutorial-page';
+    img.src = src;
+    img.alt = `教學漫畫第 ${i + 1} 頁`;
+    tutorialPagesEl.appendChild(img);
+  });
+}
+
 function startTutorialRoster(pages) {
   state.tutorialPages = pages;
   state.tutorialReady = {};
   broadcastState();
+  renderTutorialPages(pages);
   renderTutorialRoster();
 
   if (tutorialPlayingIds().length === 0) { hideTutorial(); return; } // nobody to wait on
@@ -1011,18 +1111,10 @@ function allTutorialPlayersReady() {
 
 function renderTutorialRoster() {
   tutorialRosterEl.innerHTML = '';
-  tutorialPlayingIds().forEach(id => {
-    const ready = !!state.tutorialReady[id];
-    const team = state.teams[id] ?? 'red';
-    const row = document.createElement('div');
-    row.className = 'prep-roster-row' + (ready ? ' ready' : '');
-    row.innerHTML = `
-      <span class="prep-roster-dot ${team}"></span>
-      <span class="prep-roster-name">${state.players[id]?.name ?? '???'}</span>
-      <span class="prep-roster-status">${ready ? '✅ 看完了' : '📖 閱讀中…'}</span>
-    `;
-    tutorialRosterEl.appendChild(row);
-  });
+  const ids = tutorialPlayingIds();
+  const isReady = id => !!state.tutorialReady[id];
+  tutorialRosterEl.appendChild(buildRosterTeamBox('red',  '🔴 紅隊', ids, isReady, '看完了', '閱讀中…'));
+  tutorialRosterEl.appendChild(buildRosterTeamBox('blue', '🔵 藍隊', ids, isReady, '看完了', '閱讀中…'));
 }
 
 function handleTutorialReady(deviceId) {
@@ -1045,14 +1137,22 @@ function startTutorialReadyCountdown(seconds) {
       return;
     }
     tutorialRosterCountdownEl.classList.remove('hidden');
-    tutorialRosterCountdownEl.textContent = `⏳ 還有 ${Math.max(0, remaining)} 秒，時間到會自動開始比賽`;
+    tutorialRosterCountdownEl.textContent = `還有 ${Math.max(0, remaining)} 秒，時間到會自動開始比賽`;
     remaining -= 1;
   };
   tick();
   _tutorialCountdownInterval = setInterval(tick, 1000);
 }
 
-function endGame(winnerTeam) {
+// roundScore is optional: { label, red, blue } — each game's own final
+// score in whatever format makes sense for it (points, %, coins, ...),
+// pre-formatted as display strings since every game's unit is different.
+// Games that don't pass one just skip that line on the results screen.
+function endGame(winnerTeam, roundScore) {
+  // Captured before incrementing so renderResults() can animate the
+  // cumulative pill counting up from the old value to the new one.
+  state._prevTeamScores = { red: state.teamScores.red, blue: state.teamScores.blue };
+
   // Games report their winner explicitly; anything else counts as a draw
   if (winnerTeam === 'red' || winnerTeam === 'blue') {
     state.teamScores[winnerTeam]++;
@@ -1060,6 +1160,7 @@ function endGame(winnerTeam) {
   } else {
     state.lastWinner = null;
   }
+  state.lastRoundScore = roundScore ?? null;
 
   state.currentGame?.onEnd?.();
   airconsole.setActivePlayers(0);
@@ -1075,11 +1176,32 @@ function handlePlayerInput(deviceId, data) {
 }
 
 // ---------------------------------------------------------------------------
-// Cheer emoji system (canvas layer drawn over game)
+// Cheer emoji system (canvas layer drawn over game) — the six picker
+// buttons on the controller (src/controller/main.js's .cheer-btn handler)
+// send one of these ids; the matching illustrated sticker (public/emoji/)
+// floats up here instead of a plain unicode glyph.
 // ---------------------------------------------------------------------------
-function addCheerEmoji(emoji, deviceId) {
+const CHEER_STICKER_SRC = {
+  fire:  'emoji/1.jpg',
+  like:  'emoji/2.jpg',
+  cheer: 'emoji/3.jpg',
+  party: 'emoji/4.jpg',
+  star:  'emoji/5.jpg',
+  love:  'emoji/6.jpg',
+};
+const CHEER_STICKER_IMAGES = Object.fromEntries(
+  Object.entries(CHEER_STICKER_SRC).map(([id, src]) => {
+    const img = new Image();
+    img.src = src;
+    return [id, img];
+  })
+);
+
+function addCheerEmoji(stickerId, deviceId) {
+  const img = CHEER_STICKER_IMAGES[stickerId];
+  if (!img) return; // unknown id (stale client) — ignore rather than draw nothing forever
   _cheerEmojis.push({
-    emoji,
+    img,
     x:          60 + Math.random() * (canvas.width - 120),
     y:          canvas.height - 10,
     vy:         -(100 + Math.random() * 80),
@@ -1095,9 +1217,6 @@ function addCheerEmoji(emoji, deviceId) {
 
 function tickAndDrawCheerEmojis(dt) {
   if (!_cheerEmojis.length) return;
-  ctx.save();
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
   for (let i = _cheerEmojis.length - 1; i >= 0; i--) {
     const em = _cheerEmojis[i];
     em.age    += dt;
@@ -1106,12 +1225,29 @@ function tickAndDrawCheerEmojis(dt) {
     em.x      += em.vx * dt + Math.sin(em.wobble) * 0.5;
     em.opacity = Math.max(0, 1 - (em.age / em.lifetime) ** 1.8);
     if (em.age >= em.lifetime) { _cheerEmojis.splice(i, 1); continue; }
+    if (!em.img.complete || !em.img.naturalWidth) continue; // still decoding — skip this frame
+
+    const r = em.size / 2;
+    ctx.save();
     ctx.globalAlpha = em.opacity;
-    ctx.font        = `${em.size}px sans-serif`;
-    ctx.fillText(em.emoji, em.x, em.y);
+    ctx.translate(em.x, em.y);
+    // Source stickers are opaque square JPGs (no alpha channel) — clip to
+    // a circle so it reads as a round sticker badge instead of a white
+    // square patch flying across the screen.
+    ctx.save();
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.drawImage(em.img, -r, -r, em.size, em.size);
+    ctx.restore();
   }
-  ctx.globalAlpha = 1;
-  ctx.restore();
 }
 
 // ---------------------------------------------------------------------------
@@ -1246,21 +1382,22 @@ function renderLobby() {
 
   playerCountEl.textContent = `${count} 位玩家已加入`;
 
+  // The host has its own standalone badge — it never appears in either
+  // team column (see shared/teams.js and assignableIds()).
+  const host = state.players[masterId];
+  hostCardEl.classList.toggle('hidden', !host);
+  hostCardEl.textContent = host ? `房主：${host.name}` : '';
+
   teamRedListEl.innerHTML  = '';
   teamBlueListEl.innerHTML = '';
 
-  // Host always renders first in their team's roster (stable sort keeps
-  // everyone else in join order).
-  const orderedIds = [...ids].sort((a, b) =>
-    (a === masterId ? 0 : 1) - (b === masterId ? 0 : 1));
-
-  orderedIds.forEach(id => {
+  ids.forEach(id => {
+    if (id === masterId) return; // rendered as the host badge instead
     const p    = state.players[id];
     const team = state.teams[id];
     const card = document.createElement('div');
     card.className   = 'player-card ' + (team === 'red' ? 'player-card-red' : 'player-card-blue');
-    if (id === masterId) card.classList.add('player-card-host');
-    card.textContent = p.name + (id === masterId ? '（房主）' : '');
+    card.textContent = p.name;
     if (team === 'red') teamRedListEl.appendChild(card);
     else                teamBlueListEl.appendChild(card);
   });
@@ -1272,9 +1409,11 @@ function renderLobby() {
   teamRedListEl.dataset.size  = tier(teamRedListEl.children.length);
   teamBlueListEl.dataset.size = tier(teamBlueListEl.children.length);
 
+  // Playable headcount excludes the host — they never fill a team slot.
+  const playableCount = count - (host ? 1 : 0);
   lobbyHintEl.textContent =
-    count === 0 ? '等待玩家加入…' :
-    count === 1 ? '至少需要 2 位玩家才能開始' :
+    playableCount === 0 ? '等待玩家加入…' :
+    playableCount === 1 ? '至少需要 2 位玩家才能開始' :
                   '房主：準備好了按 START 開始！';
 }
 
@@ -1289,7 +1428,7 @@ function renderGameSelect() {
   // Running team score — same painted-pill treatment as the results screen
   document.getElementById('game-select-scores').innerHTML = `
     <div class="cum-score red">🔴 <span class="cum-num">${state.teamScores.red}</span></div>
-    <div class="cum-divider">勝</div>
+    <div class="cum-divider">VS</div>
     <div class="cum-score blue"><span class="cum-num">${state.teamScores.blue}</span> 🔵</div>
   `;
 
@@ -1440,21 +1579,44 @@ function renderMapSelect() {
 // ---------------------------------------------------------------------------
 function renderResults() {
   const w = state.lastWinner;
-  const red  = state.teamScores.red;
-  const blue = state.teamScores.blue;
+  const roundScore = state.lastRoundScore; // { label, red, blue } | null
+  const prev = state._prevTeamScores ?? state.teamScores;
+
+  const winnerClass = w === 'red' ? 'red' : w === 'blue' ? 'blue' : 'tie';
+  const winnerText = w ? `${w === 'red' ? '🔴 紅隊' : '🔵 藍隊'} 獲勝！` : '平手！';
 
   scoreboardEl.innerHTML = `
+    <div class="winner-announce ${winnerClass}">${winnerText}</div>
+    ${roundScore ? `
+      <div class="round-score">
+        <span class="round-score-label">${roundScore.label}</span>
+        <span class="round-score-red">${roundScore.red}</span>
+        <span class="round-score-sep">:</span>
+        <span class="round-score-blue">${roundScore.blue}</span>
+      </div>
+    ` : ''}
+    <div class="cum-total-label">總比分</div>
     <div class="cumulative-scores">
-      <div class="cum-score red">🔴 <span class="cum-num">${red}</span></div>
-      <div class="cum-divider">勝</div>
-      <div class="cum-score blue"><span class="cum-num">${blue}</span> 🔵</div>
-    </div>
-    <div class="last-winner">
-      ${w ? `本局：${w === 'red' ? '🔴 紅隊' : '🔵 藍隊'} 獲勝 👑` : '本局：平手'}
+      <div class="cum-score red">🔴 <span class="cum-num" id="cum-num-red">${prev.red}</span></div>
+      <div class="cum-divider">VS</div>
+      <div class="cum-score blue"><span class="cum-num" id="cum-num-blue">${prev.blue}</span> 🔵</div>
     </div>
   `;
 
   resultsHintEl.textContent = '房主：繼續遊戲或回到大廳';
+
+  // Let the winner announcement land first, then bump the cumulative pill
+  // from the old value up to the new one — "advances by one point" instead
+  // of just snapping straight to the incremented number.
+  if (w === 'red' || w === 'blue') {
+    const numEl = document.getElementById(`cum-num-${w}`);
+    const target = state.teamScores[w];
+    setTimeout(() => {
+      if (!numEl) return;
+      numEl.textContent = target;
+      numEl.classList.add('cum-num-bump');
+    }, 700);
+  }
 }
 
 // ---------------------------------------------------------------------------

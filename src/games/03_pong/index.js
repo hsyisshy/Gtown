@@ -10,6 +10,10 @@ import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPr
 import { bgm, SFX } from './audio.js';
 
 const WIN_SCORE = 4;
+// Full-height (100 logical units) sweep in ~1.2s at max stick deflection —
+// was 50 (2s sweep), which felt sluggish once the ball ramps up toward
+// BALL_SPEED_MAX.
+const PADDLE_SPEED = 85; // logical units / sec
 const BALL_SPEED_INIT = 50;  // logical units / sec
 const BALL_SPEED_STEP = 1.18; // +18% speed on every paddle hit — ramps up fast
 const BALL_SPEED_MAX  = 220; // cap at 4.4x — still reactable, just a lot more urgent
@@ -20,6 +24,14 @@ const PADDLE_HIT_DEPTH = 3;
 
 const bgImg = new Image();
 bgImg.src = '03_pong/pong_bg.png';
+
+// pong_bg.png draws a decorative black+white picture-frame border OUTSIDE
+// the actual white court line — logical space (0-200 x, 0-100 y) needs to
+// map onto that inner white-lined rect, not the raw canvas edge, or the
+// ball visibly crosses into the frame before bouncing/scoring registers.
+// Measured directly against the image (fraction of canvas width/height).
+const COURT_X0 = 0.0443, COURT_X1 = 0.9551;
+const COURT_Y0 = 0.0756, COURT_Y1 = 0.9297;
 
 // --- Power-ups -------------------------------------------------------------
 // Spawn between the paddles; whoever last hit the ball claims the pickup when
@@ -288,9 +300,16 @@ export default {
 
     const { paddles, ball, score, scoreMsg } = pg;
 
-    // Map logical coords to canvas pixels
-    const tx = x => (x * (w / 200)) | 0;
-    const ty = y => (y * (h / 100)) | 0;
+    // Map logical coords to canvas pixels — tx/ty are ABSOLUTE positions
+    // (offset to land inside the court's white line, see COURT_X0 etc.
+    // above); sx/sy are pure width/height deltas with no offset, for sizes
+    // like paddle/ball radius that must scale but not shift.
+    const scaleX = (COURT_X1 - COURT_X0) * (w / 200);
+    const scaleY = (COURT_Y1 - COURT_Y0) * (h / 100);
+    const tx = x => (COURT_X0 * w + x * scaleX) | 0;
+    const ty = y => (COURT_Y0 * h + y * scaleY) | 0;
+    const sx = x => x * scaleX;
+    const sy = y => y * scaleY;
 
     // Background
     if (bgImg.complete && bgImg.naturalWidth) {
@@ -300,14 +319,15 @@ export default {
       ctx.fillRect(0, 0, w, h);
     }
 
-    // Center dashed line
+    // Center dashed line — spans ty(0)..ty(100), the court's true top/bottom
+    // white line, not the raw canvas edge (0..h)
     ctx.save();
-    ctx.setLineDash([ty(4), ty(4)]);
+    ctx.setLineDash([sy(4), sy(4)]);
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(tx(100), 0);
-    ctx.lineTo(tx(100), h);
+    ctx.moveTo(tx(100), ty(0));
+    ctx.lineTo(tx(100), ty(100));
     ctx.stroke();
     ctx.restore();
 
@@ -316,7 +336,7 @@ export default {
       const px = tx(pu.x);
       const py = ty(pu.y);
       const pulse = 1 + 0.12 * Math.sin(pg.time * 5 + pu.phase);
-      const r = ty(PU_RADIUS) * pulse;
+      const r = sy(PU_RADIUS) * pulse;
 
       ctx.beginPath();
       ctx.arc(px, py, r + 3, 0, Math.PI * 2);
@@ -335,15 +355,15 @@ export default {
     // Paddles
     ctx.fillStyle = '#fff';
     for (const p of paddles) {
-      const pw = Math.max(tx(2), 4);
-      const ph = ty(p.height);
+      const pw = Math.max(sx(2), 4);
+      const ph = sy(p.height);
       ctx.fillRect(tx(p.pos.x - 1), ty(p.pos.y) - (ph >> 1), pw, ph);
     }
 
     // Ball
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(tx(ball.pos.x), ty(ball.pos.y), Math.max(tx(2), 5), 0, Math.PI * 2);
+    ctx.arc(tx(ball.pos.x), ty(ball.pos.y), Math.max(sx(2), 5), 0, Math.PI * 2);
     ctx.fill();
 
     // Score — on a dark chip so it stays legible over the board frame
@@ -418,7 +438,7 @@ export default {
     const player = pg.paddles.find(p => String(p.deviceId) === did);
     if (!player) return;
 
-    if (data.action === 'move') player.move.y = (data.dy ?? 0) * 50;
+    if (data.action === 'move') player.move.y = (data.dy ?? 0) * PADDLE_SPEED;
   },
 
   onEnd() {
@@ -446,5 +466,5 @@ function _finish(globalState, winnerIdx) {
       (globalState.players[winnerId].score || 0) + pg.score[winnerIdx];
   }
   const winnerTeam = winnerId ? (globalState.teams?.[winnerId] ?? null) : null;
-  pg._endCb?.(winnerTeam);
+  pg._endCb?.(winnerTeam, { label: '比分', red: String(pg.score[0]), blue: String(pg.score[1]) });
 }

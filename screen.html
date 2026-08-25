@@ -26,6 +26,7 @@
     <!-- LOBBY: title is baked into the lobby_bd.png background art -->
     <div id="view-lobby">
       <p id="player-count"></p>
+      <div id="host-card" class="hidden"></div>
       <div id="team-columns">
         <div class="team-col">
           <div class="team-col-header red">🔴 紅隊</div>
@@ -58,7 +59,7 @@
     <!-- PREP: reveal each team's picks, then wait for everyone drawn to
          tap 準備 before the match actually begins -->
     <div id="view-prep" class="hidden">
-      <h2>賽前準備</h2>
+      <h2>READY ROOM</h2>
       <div id="prep-teams">
         <div class="prep-team-box team-red">
           <div class="prep-team-header">🔴 紅隊</div>
@@ -86,10 +87,13 @@
        dismissed. Two mutually-exclusive layouts inside the same panel:
        #tutorial-classic (text goal/controls/tips, or one comic image, with
        a click-to-start button + auto-start countdown) is the original
-       format most games still use; #tutorial-paged (a ready-roster — every
-       playing device flips through its own copy of the how-to-play picture
-       book independently on its own phone) is the newer format for games
-       with a tutorial.pages array. -->
+       format most games still use; #tutorial-paged (every one of the
+       game's how-to-play comic pages shown together, plus a per-team
+       ready-roster) is the newer format for games with a tutorial.pages
+       array. Everyone still flips through their OWN copy on their OWN
+       phone at their own pace (see src/controller/main.js) — the shared
+       screen showing every page too just means the room can read along
+       together instead of only seeing a "check your phone" placeholder. -->
   <div id="tutorial-overlay" class="hidden">
     <div id="tutorial-panel">
       <h2 id="tutorial-title"></h2>
@@ -113,7 +117,7 @@
       </div>
 
       <div id="tutorial-paged" class="hidden">
-        <p class="tutorial-roster-hint">📱 教學漫畫在大家自己的手機上，翻到最後一頁按 Ⓑ 準備開始！</p>
+        <div id="tutorial-pages"></div>
         <div id="tutorial-roster"></div>
         <p id="tutorial-roster-countdown" class="hidden"></p>
       </div>
@@ -126,11 +130,11 @@
     <div id="settings-panel" class="hidden">
       <h3>設定</h3>
       <label class="setting-row">
-        <span class="setting-label">🎵 背景音樂</span>
+        <span class="setting-label">背景音樂</span>
         <input type="range" id="setting-bgm" min="0" max="100" step="5" />
       </label>
       <label class="setting-row">
-        <span class="setting-label">🔔 按鈕音效</span>
+        <span class="setting-label">按鈕音效</span>
         <input type="range" id="setting-sfx" min="0" max="100" step="5" />
       </label>
     </div>

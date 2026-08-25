@@ -1,18 +1,24 @@
 /**
  * 仿畫行動 — ported from painting_sticker/game.js.
  *
- * Red vs blue, 1 active cursor per team (playersPerTeam: 1). Each team grabs
- * torn-paper pieces from its own rack and drops them onto its own canvas,
- * racing to reproduce the reference painting before time runs out. Score is
- * a color-similarity comparison against the source painting, hidden until
- * the reveal at the end (matches the original's "don't peek at your score
- * mid-match" design).
+ * Red vs blue, 2 players per team (playersPerTeam: 2, requireFullTeams) —
+ * both teammates get their own cursor but share one rack and one canvas,
+ * grabbing torn-paper pieces and racing to reproduce the reference painting
+ * before time runs out. Score is a color-similarity comparison against the
+ * source painting, hidden until the reveal at the end (matches the
+ * original's "don't peek at your score mid-match" design).
+ *
+ * Early finish requires BOTH teammates to press A — pressing toggles that
+ * player's own "ready to submit" flag (press again to cancel), and the
+ * team locks in only once both flags are set. Ported from the original
+ * prototype's own 2-player co-op mode (game.js's readyToFinishByPlayer),
+ * which already solved exactly this "don't let one player submit for a
+ * teammate who isn't done" problem.
  *
  * The original's AI opponent, random "干擾" events, and its standalone
  * WebSocket coop room are dropped — the hub already provides real opponents
  * and networking. The shared item pickup (stun/shake/peek) is kept, ported
- * from the original's ITEM_DEFS. See painting_sticker/GDD_定案.md for the
- * source design doc.
+ * from the original's ITEM_DEFS.
  *
  * Pieces are generated at runtime (not pre-cut PNGs) via tear.js's
  * Voronoi + torn-edge algorithm, so only one raw.png per painting ships.
@@ -188,26 +194,36 @@ function scatterRackPieces(pieces, rackArea, pieceW, pieceH) {
   });
 }
 
-function createTeam(key, x, deviceId, name, assets) {
+// `players` is [{ deviceId, name }, { deviceId, name }] — the team's two
+// devices. Rack/canvas/score/finished stay TEAM-level (one shared pool,
+// one shared canvas); only cursor/carrying/move/readyToFinish are per-player.
+function createTeam(key, x, players, assets) {
   const areas = makeAreas(x);
   const rackPieces = scatterRackPieces(assets.pieces, areas.rack, assets.pieceW, assets.pieceH);
   const canvasFit = computeFit(areas.canvas, assets.srcW, assets.srcH);
+  const startX = areas.rack.x + areas.rack.w / 2;
+  const startY = areas.rack.y + areas.rack.h / 2;
   return {
     key,
-    deviceId,
-    name,
     areas,
     canvasFit,
     rackPieces,
     placedPieces: [],
-    carrying: null,
-    cursor: { x: areas.rack.x + areas.rack.w / 2, y: areas.rack.y + areas.rack.h / 2 },
-    move: { dx: 0, dy: 0 },
     score: 0,
     finished: false,
     finishBonus: 0,
     stunTimer: 0,
     peekTimer: 0,
+    // Slight starting offset so the two cursors aren't perfectly stacked.
+    players: players.map((p, i) => ({
+      deviceId: p.deviceId,
+      name: p.name,
+      slot: i,
+      cursor: { x: startX + (i === 0 ? -16 : 16), y: startY },
+      carrying: null,
+      move: { dx: 0, dy: 0 },
+      readyToFinish: false,
+    })),
   };
 }
 
@@ -237,17 +253,17 @@ function findPlacedPieceAt(assets, team, x, y) {
   return -1;
 }
 
-function handleAction(assets, team) {
-  const { x: cx, y: cy } = team.cursor;
-  if (!team.carrying) {
+function handleAction(assets, team, player) {
+  const { x: cx, y: cy } = player.cursor;
+  if (!player.carrying) {
     if (rectContains(team.areas.rack, cx, cy)) {
       const p = findRackPieceAt(assets, team, cx, cy);
-      if (p) { p.taken = true; team.carrying = { id: p.id }; SFX.grab(); }
+      if (p) { p.taken = true; player.carrying = { id: p.id }; SFX.grab(); }
     } else if (rectContains(team.areas.canvas, cx, cy)) {
       const idx = findPlacedPieceAt(assets, team, cx, cy);
       if (idx >= 0) {
         const [pp] = team.placedPieces.splice(idx, 1);
-        team.carrying = { id: pp.id };
+        player.carrying = { id: pp.id };
         SFX.grab();
       }
     }
@@ -255,18 +271,18 @@ function handleAction(assets, team) {
     const { scale, offsetX, offsetY } = team.canvasFit;
     const source_x = (cx - offsetX) / scale - assets.pieceW / 2;
     const source_y = (cy - offsetY) / scale - assets.pieceH / 2;
-    team.placedPieces.push({ id: team.carrying.id, source_x, source_y });
-    team.carrying = null;
+    team.placedPieces.push({ id: player.carrying.id, source_x, source_y });
+    player.carrying = null;
   } else {
-    const rp = team.rackPieces.find((p) => p.id === team.carrying.id);
+    const rp = team.rackPieces.find((p) => p.id === player.carrying.id);
     if (rp) rp.taken = false;
-    team.carrying = null;
+    player.carrying = null;
   }
 }
 
-function moveCursor(team, dt) {
+function moveCursor(team, player, dt) {
   if (team.stunTimer > 0) return;
-  const { dx, dy } = team.move;
+  const { dx, dy } = player.move;
   if (!dx && !dy) return;
   // Full content width (not just this team's own side) — the shared item
   // box sits in the middle strip, so either cursor needs to be able to
@@ -277,8 +293,8 @@ function moveCursor(team, dt) {
     w: RIGHT_X + SIDE_W - LEFT_X,
     h: team.areas.canvas.y + team.areas.canvas.h - team.areas.header.y,
   };
-  team.cursor.x = Math.max(bounds.x, Math.min(bounds.x + bounds.w, team.cursor.x + dx * MOVE_SPEED * dt));
-  team.cursor.y = Math.max(bounds.y, Math.min(bounds.y + bounds.h, team.cursor.y + dy * MOVE_SPEED * dt));
+  player.cursor.x = Math.max(bounds.x, Math.min(bounds.x + bounds.w, player.cursor.x + dx * MOVE_SPEED * dt));
+  player.cursor.y = Math.max(bounds.y, Math.min(bounds.y + bounds.h, player.cursor.y + dy * MOVE_SPEED * dt));
 }
 
 // ---- Shared item pickup — spawns in the middle strip, either team can grab it ----
@@ -287,9 +303,9 @@ function spawnRandomItem() {
   pg.activeItem = { type: def.type };
 }
 
-function tryClaimItem(team) {
+function tryClaimItem(team, player) {
   if (!pg.activeItem) return;
-  if (!rectContains(ITEM_BOX, team.cursor.x, team.cursor.y)) return;
+  if (!rectContains(ITEM_BOX, player.cursor.x, player.cursor.y)) return;
   applyItemEffect(pg.activeItem.type, team);
   SFX.grab();
   pg.activeItem = null;
@@ -377,6 +393,18 @@ function finishTeamEarly(assets, team, remainingSeconds) {
   team.score = Math.min(100, computeColorSimilarity(assets, team) + bonus);
   team.finished = true;
   team.finishBonus = bonus;
+}
+
+// A pressing A toggles their OWN "ready to submit" flag (press again to
+// cancel) — the team only actually locks in once BOTH teammates have it
+// set, so one player can't submit early out from under the other.
+function toggleFinishReady(assets, team, player, remainingSeconds) {
+  if (team.finished) return;
+  player.readyToFinish = !player.readyToFinish;
+  SFX.grab();
+  if (team.players.every((p) => p.readyToFinish)) {
+    finishTeamEarly(assets, team, remainingSeconds);
+  }
 }
 
 // ---- 牛皮紙拼貼美術主題：撕紙面板 + 紙膠帶 + 材質紋理 ---------------------
@@ -569,7 +597,8 @@ function drawTeamPanel(ctx, assets, team, reveal) {
   ctx.fillStyle = CREAM;
   ctx.font = `700 20px ${FONT_DISPLAY}`;
   ctx.textAlign = 'left';
-  ctx.fillText(`${TEAM_LABEL[team.key]}碎片架　${team.name}`, header.x + 12, header.y + header.h / 2);
+  const teamNames = team.players.map((p) => p.name).join('、');
+  ctx.fillText(`${TEAM_LABEL[team.key]}碎片架　${teamNames}`, header.x + 12, header.y + header.h / 2);
 
   if (team.finished) {
     const badgeText = `✅ 已提早完成 +${team.finishBonus.toFixed(1)}%`;
@@ -623,22 +652,27 @@ function drawTeamPanel(ctx, assets, team, reveal) {
   ctx.restore();
   drawTapeCorner(ctx, canvasArea.x + canvasArea.w - 24, canvasArea.y, main, 0.12);
 
-  // Cursor / carried piece
-  if (team.carrying) {
-    ctx.globalAlpha = 0.85;
-    ctx.drawImage(
-      assets.pieceImages[team.carrying.id],
-      team.cursor.x - (assets.pieceW * scale) / 2,
-      team.cursor.y - (assets.pieceH * scale) / 2,
-      assets.pieceW * scale,
-      assets.pieceH * scale,
-    );
-    ctx.globalAlpha = 1;
+  // Cursor / carried piece — one per team member, tinted main vs dim so
+  // which cursor belongs to whom reads at a glance without a name tag
+  // following it around.
+  for (const player of team.players) {
+    const cursorColor = player.slot === 0 ? main : TEAM_DIM[team.key];
+    if (player.carrying) {
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(
+        assets.pieceImages[player.carrying.id],
+        player.cursor.x - (assets.pieceW * scale) / 2,
+        player.cursor.y - (assets.pieceH * scale) / 2,
+        assets.pieceW * scale,
+        assets.pieceH * scale,
+      );
+      ctx.globalAlpha = 1;
+    }
+    ctx.strokeStyle = player.carrying ? CREAM : cursorColor;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(player.cursor.x - CURSOR_SIZE / 2, player.cursor.y - CURSOR_SIZE / 2, CURSOR_SIZE, CURSOR_SIZE);
+    ctx.lineWidth = 1;
   }
-  ctx.strokeStyle = team.carrying ? CREAM : main;
-  ctx.lineWidth = 3;
-  ctx.strokeRect(team.cursor.x - CURSOR_SIZE / 2, team.cursor.y - CURSOR_SIZE / 2, CURSOR_SIZE, CURSOR_SIZE);
-  ctx.lineWidth = 1;
 
   // 偷窺道具效果：畫布疊一層原畫殘影
   if (team.peekTimer > 0) {
@@ -841,7 +875,12 @@ function drawScorePanel(ctx, teams, reveal, timeRemaining, holdSecondsLeft, conf
         ctx.fillStyle = TEAM_DIM.blue;
         wrapText(ctx, `${TEAM_LABEL[key]}已提早完成（+${team.finishBonus.toFixed(1)}%），等待結算`, area.x + area.w / 2, y, area.w - 24, 16);
       } else {
-        const text = `${TEAM_LABEL[key]}按 A 提早完成：+${computeEarlyFinishBonus(timeRemaining).toFixed(1)}% 加成`;
+        // Both teammates must press A — one player's press only flags
+        // themselves ready, so the hint shows how many of the two are in.
+        const readyCount = team.players.filter((p) => p.readyToFinish).length;
+        const text = readyCount > 0
+          ? `${TEAM_LABEL[key]} ${readyCount}/2 已按 A 準備交卷（兩人都按才鎖定）`
+          : `${TEAM_LABEL[key]}按 A 提早交卷：+${computeEarlyFinishBonus(timeRemaining).toFixed(1)}% 加成`;
         drawHintWithButtonColor(ctx, text, 'A', BTN_A_COLOR, 'rgba(51,48,42,0.65)', area.x + area.w / 2, y);
       }
     });
@@ -906,9 +945,11 @@ function _finish(globalState) {
 
   if (winnerTeam) {
     const winner = pg.teams[winnerTeam];
-    if (winner.deviceId != null && globalState.players?.[winner.deviceId]) {
-      globalState.players[winner.deviceId].score =
-        (globalState.players[winner.deviceId].score || 0) + Math.round(winner.score);
+    for (const p of winner.players) {
+      if (p.deviceId != null && globalState.players?.[p.deviceId]) {
+        globalState.players[p.deviceId].score =
+          (globalState.players[p.deviceId].score || 0) + Math.round(winner.score);
+      }
     }
   }
 
@@ -923,7 +964,8 @@ export default {
   id: 'painting-sticker',
   name: '仿畫行動',
   description: '搶碎片、拼出原畫，比比看誰的畫布更像！',
-  playersPerTeam: 1,
+  playersPerTeam: 2,
+  requireFullTeams: true,
   color: '#d9895a',
   emoji: '🖼️',
   cover: '07_painting-sticker/painting_cover.png',
@@ -939,12 +981,13 @@ export default {
 
   onStart(globalState, endCb) {
     bgm.start();
+    // requireFullTeams guarantees exactly 2 real players per side.
     const active = globalState.activePlayers || {};
     const teams = globalState.teams || {};
     const playing = Object.entries(active).filter(([, role]) => role === 'playing').map(([id]) => id);
-    const ids = playing.length >= 2 ? playing : Object.keys(globalState.players || {});
-    const redId = ids.find((id) => teams[id] === 'red') ?? ids[0] ?? null;
-    const blueId = ids.find((id) => teams[id] === 'blue' && id !== redId) ?? ids.find((id) => id !== redId) ?? null;
+    const redIds = playing.filter((id) => teams[id] === 'red');
+    const blueIds = playing.filter((id) => teams[id] === 'blue');
+    const toPlayer = (id) => ({ deviceId: id, name: _name(globalState, id) });
 
     pg = {
       phase: 'loading',
@@ -952,8 +995,6 @@ export default {
       holdSecondsLeft: 0,
       assets: null,
       teams: null,
-      redId,
-      blueId,
       activeItem: null,
       itemSpawnSlot: 0,
       _endCb: endCb,
@@ -965,8 +1006,8 @@ export default {
         if (!pg) return; // onEnd already fired before the load finished
         pg.assets = assets;
         pg.teams = {
-          red: createTeam('red', LEFT_X, redId, _name(globalState, redId), assets),
-          blue: createTeam('blue', RIGHT_X, blueId, _name(globalState, blueId), assets),
+          red: createTeam('red', LEFT_X, redIds.map(toPlayer), assets),
+          blue: createTeam('blue', RIGHT_X, blueIds.map(toPlayer), assets),
         };
         pg.phase = 'playing';
       })
@@ -988,7 +1029,7 @@ export default {
         if (team.stunTimer > 0) team.stunTimer = Math.max(0, team.stunTimer - dt);
         if (team.peekTimer > 0) team.peekTimer = Math.max(0, team.peekTimer - dt);
         if (team.finished) continue;
-        moveCursor(team, dt);
+        for (const player of team.players) moveCursor(team, player, dt);
       }
 
       const elapsed = PLAY_SECONDS - pg.timeRemaining;
@@ -1013,7 +1054,11 @@ export default {
       pg.holdSecondsLeft -= dt;
       if (pg.holdSecondsLeft <= 0) {
         const winner = pg._pendingWinner;
-        pg._endCb?.(winner);
+        pg._endCb?.(winner, {
+          label: '相似度',
+          red: `${Math.round(pg.teams.red.score)}%`,
+          blue: `${Math.round(pg.teams.blue.score)}%`,
+        });
       }
     }
   },
@@ -1058,20 +1103,22 @@ export default {
   onInput(deviceId, data) {
     if (!pg || pg.phase !== 'playing') return;
     const did = String(deviceId);
-    const team = String(pg.teams.red.deviceId) === did ? pg.teams.red
-      : String(pg.teams.blue.deviceId) === did ? pg.teams.blue
-        : null;
-    if (!team || team.finished) return;
+    let team = null, player = null;
+    for (const t of Object.values(pg.teams)) {
+      const p = t.players.find((pl) => String(pl.deviceId) === did);
+      if (p) { team = t; player = p; break; }
+    }
+    if (!team || !player || team.finished) return;
 
     if (data.action === 'move') {
-      team.move.dx = data.dx ?? 0;
-      team.move.dy = data.dy ?? 0;
+      player.move.dx = data.dx ?? 0;
+      player.move.dy = data.dy ?? 0;
     } else if (data.action === 'grab') {
       if (team.stunTimer > 0) return;
-      handleAction(pg.assets, team);
-      tryClaimItem(team);
+      handleAction(pg.assets, team, player);
+      tryClaimItem(team, player);
     } else if (data.action === 'finish') {
-      finishTeamEarly(pg.assets, team, pg.timeRemaining);
+      toggleFinishReady(pg.assets, team, player, pg.timeRemaining);
     }
   },
 

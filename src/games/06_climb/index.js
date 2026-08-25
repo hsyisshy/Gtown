@@ -643,7 +643,9 @@ function _finish(globalState, winnerTeam) {
     globalState.players[p.deviceId].score =
       (globalState.players[p.deviceId].score || 0) + Math.round(p.maxHeight / 500);
   }
-  cg._endCb?.(winnerTeam);
+  const aliveRed = cg.players.filter((p) => p.team === 'red' && p.alive).length;
+  const aliveBlue = cg.players.filter((p) => p.team === 'blue' && p.alive).length;
+  cg._endCb?.(winnerTeam, { label: '存活人數', red: String(aliveRed), blue: String(aliveBlue) });
 }
 
 function vibrate(p) {

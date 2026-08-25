@@ -169,7 +169,8 @@ body {
 #game-select-master, #game-select-player,
 #map-select-master, #map-select-player,
 #results-master, #results-player,
-#prep-waiting, #prep-ready-pending, #prep-ready-done, #prep-watching {
+#prep-waiting, #prep-ready-pending, #prep-ready-done, #prep-watching,
+#cheering {
   position: absolute;
   inset: 0;
   display: flex;
@@ -242,12 +243,22 @@ body {
    above), so capping ITS width left the background from filling the
    screen on wide/landscape phones. */
 #game-select-list {
-  /* 3×2 grid mirroring the screen's cover-card wall — same order, the
-     phone is just a shrunk-down copy of the TV. */
+  /* 2 columns — same order as the screen's 5-col cover-card wall, just
+     narrower for a phone. With TOTAL_GAME_SLOTS=10 this divides evenly
+     into 5 full rows (3 columns left an orphan single-item last row) and
+     gives each card more width, which matters more on a phone than
+     matching the screen's exact column count. */
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
-  align-content: center;
+  /* NOT center — when the grid's rows overflow the scroll container,
+     align-content:center pushes half the overflow ABOVE scrollTop:0,
+     which can never be reached (scrollTop can't go negative). That half
+     of the list becomes permanently invisible no matter how far you
+     scroll. Rows only ever spilling downward from the top keeps the
+     whole list reachable by scrolling down. Harmless when everything
+     already fits (short lists just sit at the top instead of centered). */
+  align-content: start;
   width: 100%;
   max-width: 560px;
   /* NOT max-height:80svh — inside the portrait rotate-90 hack the body is
@@ -394,9 +405,12 @@ body {
      colors) pop instead of fighting a warm/yellow ground. */
   background: linear-gradient(180deg, #eef4fb 0%, #cdddf0 100%);
   /* Compact MOBA-style clusters: buttons no longer stretch to fill the
-     screen — small enough to roll a thumb across, anchored bottom-right. */
-  --btn-size: clamp(36px, min(calc(var(--lh) * 0.12), calc((var(--lw) * 0.94 - 16px) / 6.4)), 68px);
-  --btn-gap:  clamp(4px, calc(var(--lh) * 0.02), 10px);
+     screen — small enough to roll a thumb across, anchored bottom-right.
+     Floor bumped from 36px/gap 4px — users reported mis-taps between the
+     diamond's four buttons; 36px sat below Apple/Google's ~44px minimum
+     touch-target guidance with only 4px separating adjacent buttons. */
+  --btn-size: clamp(44px, min(calc(var(--lh) * 0.15), calc((var(--lw) * 0.94 - 16px) / 6.4)), 76px);
+  --btn-gap:  clamp(6px, calc(var(--lh) * 0.025), 12px);
 }
 
 #team-badge-controls {
@@ -473,7 +487,12 @@ body {
 }
 
 .joy-base {
-  --joy-size: clamp(110px, calc(var(--lh) * 0.34), 190px);
+  /* Bumped from clamp(110px, lh*0.34, 190px) — same "hard to press" feedback
+     covered the stick's visible grip (蘑菇頭) alongside the ABXY buttons.
+     The actual drag hit-zone (.joy-zone, the whole left half) was already
+     generous; this is about the visible knob reading big enough to feel
+     precise under a thumb, not the touch target itself. */
+  --joy-size: clamp(130px, calc(var(--lh) * 0.4), 210px);
   position: absolute;
   width: var(--joy-size);
   height: var(--joy-size);
@@ -503,8 +522,8 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 46%;
-  height: 46%;
+  width: 50%;
+  height: 50%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: linear-gradient(160deg, color-mix(in srgb, #8fb3e8 60%, #fff) 0%, #8fb3e8 55%, color-mix(in srgb, #8fb3e8 80%, #000) 100%);
@@ -646,52 +665,82 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   gap: 16px;
 }
 
-/* ── Cheering (watching during game) ── */
+/* ── Cheering (watching during game) ──
+   Same village square as lobby/game-select/prep/results (background image
+   + position/flow set in the shared selector group above) — previously the
+   only phase left on the plain dark gamepad-screen gradient instead of the
+   rest of the menu flow's village art, which read as a mismatched leftover
+   screen. This block only carries cheering-specific overrides. */
 #cheering {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
   gap: 14px;
-  width: 100%;
-  padding: 0 16px;
+  padding: 3svh 16px;
 }
 
+/* .team-badge is transparent by default (fine against the dark gamepad
+   background it's also used on, e.g. #team-badge-controls) — add a cream
+   backing plate just here so the red/blue text+border it's colored with
+   (set inline by renderTeamBadges()) doesn't get lost in the busy village
+   art instead of reading as a clean pill. */
+#cheering .team-badge {
+  background: #fff8ec;
+}
+
+/* Ink-on-cream painted-sign text, same treatment as .role-tag/.hint
+   wherever they sit on this village art — the old gold neon glow was
+   tuned for the dark gamepad background and would wash out against the
+   busy cream/wood art here. */
 .cheer-title {
   font-size: 1.2rem;
   font-weight: 900;
-  color: #ffe555;
+  color: #4a2f18;
   letter-spacing: 0.1em;
-  text-shadow: 0 0 12px rgba(255,220,0,0.6);
+  text-shadow:
+    -1px -1px 0 #fff6dd, 1px -1px 0 #fff6dd,
+    -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
 }
 
 .cheer-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  max-width: 280px;
+  max-width: 320px;
 }
 
+/* Same "physical button" bevel language as .abxy-btn / .primary-btn (gold
+   gradient face, dark border, bottom-edge shadow that collapses on press)
+   instead of the old flat translucent-glass squares, which were the only
+   buttons in the whole app not built out of that language. */
 .cheer-btn {
   aspect-ratio: 1;
-  font-size: 1.6rem;
-  font-family: sans-serif;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  border-radius: 14px;
+  padding: 10%;
+  background: linear-gradient(160deg, #fff0a0 0%, #ffd000 35%, #ff9a00 75%, #e06000 100%);
+  border: 3px solid #a04000;
+  border-radius: 24%;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 0 rgba(0,0,0,0.35);
+  box-shadow: 0 5px 0 #7a3000, 0 8px 16px rgba(0, 0, 0, 0.35);
   transition: transform 0.07s, box-shadow 0.07s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 .cheer-btn:active {
-  transform: translateY(3px);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.35);
-  background: rgba(255,255,255,0.2);
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 #7a3000, 0 3px 8px rgba(0, 0, 0, 0.3);
+}
+.cheer-btn img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Source stickers are opaque square JPGs (no alpha channel) — clipping
+     to a circle plus a white backing + ink ring reads as a round sticker
+     badge instead of a white square patch sitting on the gold tile. */
+  border-radius: 50%;
+  background: #fff8ec;
+  box-shadow: 0 0 0 2px rgba(160, 64, 0, 0.4);
+  pointer-events: none;
 }
 
 .cheer-phrases {
@@ -703,24 +752,28 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   max-width: 320px;
 }
 
+/* Same wood-plaque secondary-button language as .switch-team-btn / the
+   game-select 重新分隊 button — every OTHER button on this village art
+   uses cream+ink, not the dark theme's transparent/purple outline (which
+   was tuned for the gamepad screens' dark gradient and would nearly
+   disappear against this bright background). */
 .cheer-phrase-btn {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #fff8ec;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 255, 255, 0.2);
+  color: #4a2f18;
+  background: #fff8ec;
+  border: 2px solid #2b2015;
   border-radius: 20px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   cursor: pointer;
-  box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+  box-shadow: 0 3px 0 rgba(43, 32, 21, 0.4);
   transition: transform 0.07s, box-shadow 0.07s;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 .cheer-phrase-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 rgba(0,0,0,0.35);
-  background: rgba(255,255,255,0.2);
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 rgba(43, 32, 21, 0.4);
 }
 
 .cheer-text-form {
@@ -730,18 +783,20 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
   max-width: 320px;
 }
 
+/* Cream signboard input, matching the button family above instead of the
+   dark theme's frosted-glass field. */
 .cheer-text-input {
   flex: 1;
   min-width: 0;
   font-size: 1rem;
   padding: 8px 12px;
   border-radius: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff8ec;
+  border: 2px solid #2b2015;
+  background: #fff8ec;
+  color: #4a2f18;
 }
 .cheer-text-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(74, 47, 24, 0.45);
 }
 
 .cheer-text-send {
@@ -769,7 +824,7 @@ body.tutorial-controlling .abxy-btn.btn-b.inactive {
 
 .cheer-hint {
   font-size: 0.85rem;
-  color: rgba(255,255,255,0.4);
+  color: rgba(74, 47, 24, 0.55);
   font-weight: 700;
   letter-spacing: 0.06em;
 }
@@ -1102,68 +1157,44 @@ body.tutorial-controlling #controls-help-btn { display: none; }
   color: #fff;
 }
 
-/* ── 村莊拍賣 (10_auction) — slider + lock, no joystick/buttons ── */
-.auction-panel {
-  width: min(92%, 460px);
+/* ── 村莊拍賣 (10_auction) — same joystick + ABXY shell as every other
+   game (stick up/down raises/lowers this round's bid, A locks it in).
+   Round/gift/timer/lock-status are all already public on the shared TV
+   screen, so the only thing this HUD needs to show is the one piece of
+   state that must stay private: this player's own bid amount. Sits in the
+   gamepad's otherwise-empty middle zone, same spot #controls-help-btn
+   already claims (see its own comment) but higher up so they don't
+   overlap. ── */
+.auction-hud {
+  position: absolute;
+  top: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 16px 20px;
-  background: rgba(20, 8, 40, 0.55);
-  border: 2px solid rgba(255, 208, 0, 0.3);
-  border-radius: 24px;
+  gap: 2px;
+  text-align: center;
+  pointer-events: none;
 }
 
-.auction-round {
-  font-size: 0.95rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  color: #ffd700;
-}
-
-.auction-gift {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.auction-gift-icon { font-size: 2.4rem; }
-.auction-gift-label { font-size: 1.15rem; font-weight: 900; color: #fff8ec; }
-.auction-gift-note { font-size: 0.75rem; color: #a090cc; margin-top: 2px; }
-
-.auction-timer {
-  font-size: 1rem;
-  font-weight: 900;
-  color: #ff9d76;
-}
-
-.auction-bid-row {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 0.95rem;
+.auction-hud-label {
+  font-size: 0.85rem;
   font-weight: 700;
   color: #a090cc;
 }
-.auction-bid-value {
-  font-size: 1.6rem;
+
+.auction-hud-value {
+  font-size: 2.2rem;
   font-weight: 900;
-  color: #ffd700;
+  color: #ffe555;
+  text-shadow: 0 0 14px rgba(255, 220, 0, 0.65);
+  line-height: 1.1;
 }
 
-.auction-slider {
-  width: 100%;
-  height: 34px;
-  accent-color: #ffd000;
+.auction-hud-cap {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
 }
-.auction-slider:disabled { opacity: 0.5; }
-
-.auction-lock-btn { width: 100%; }
-.auction-lock-btn:disabled {
-  opacity: 0.5;
-  box-shadow: none;
-  cursor: default;
-}
-
-.auction-status { font-size: 0.85rem; }

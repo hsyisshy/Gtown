@@ -934,7 +934,11 @@ function update(dt) {
     game.transitionTimer -= dt;
     if (game.transitionTimer <= 0 && !game.ended) {
       game.ended = true;
-      _endCallback?.(game.winner);
+      _endCallback?.(game.winner, {
+        label: '送達數',
+        red: String(teams.red.delivered),
+        blue: String(teams.blue.delivered),
+      });
     }
     return;
   }

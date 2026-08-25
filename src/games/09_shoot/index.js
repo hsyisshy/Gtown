@@ -10,7 +10,7 @@
  * button) shoves people aside, or — only against opponents — cancels their
  * charge and stuns them if they're mid-detonation, a defensive counter-play.
  * Periodic "black spray" events neutralize a cluster of territory regardless
- * of owner. At 90s, whichever team holds more combined territory wins.
+ * of owner. At 60s, whichever team holds more combined territory wins.
  *
  * Physics runs in a fixed logical space (720x450) so tuning is independent
  * of the screen resolution; draw() uniform-scales + letterboxes into the
@@ -26,7 +26,7 @@ const COLS = Math.floor(W / CELL);
 const ROWS = Math.floor(H / CELL);
 const NEUTRAL = -1;
 
-const MATCH_TIME = 90;
+const MATCH_TIME = 60;
 const MAX_CHARGE = 100;
 const CHARGE_COUNTDOWN = 3.0; // 秒,蓄滿後倒數,結束時自動引爆(不需操作)
 const DASH_COOLDOWN = 1.1;
@@ -62,8 +62,8 @@ const NOZZLE_BASE_ANGLE = -Math.PI / 4; // 角色圖預設噴嘴朝向(右上約
 const PLAYER_SHADE = [1.15, 0.7, 1.15, 0.7]; // 同隊第一位偏白、第二位偏深,方便區分隊友
 
 const TEAM_UI = {
-  red:  { label: '紅隊', text: '#ff8080', barBg: '#552222', barFill: '#e94057' },
-  blue: { label: '藍隊', text: '#80c0ff', barBg: '#223355', barFill: '#3fa9f5' },
+  red:  { label: '紅隊', text: '#ff8080', barFill: '#e94057' },
+  blue: { label: '藍隊', text: '#80c0ff', barFill: '#3fa9f5' },
 };
 const SLOT_DEFS = [
   { team: 'red',  spriteKey: 'red'  },
@@ -320,7 +320,11 @@ function _finish(globalState) {
   }
 
   const winnerTeam = teamPct.red === teamPct.blue ? null : (teamPct.red > teamPct.blue ? 'red' : 'blue');
-  sg._endCb?.(winnerTeam);
+  sg._endCb?.(winnerTeam, {
+    label: '佔地率',
+    red: `${teamPct.red.toFixed(1)}%`,
+    blue: `${teamPct.blue.toFixed(1)}%`,
+  });
 }
 
 // --- 繪製 ---------------------------------------------------------------------
@@ -390,24 +394,56 @@ function drawUI(ctx) {
   ctx.fillText(`${Math.ceil(sg.timeLeft)}`, W / 2, 6);
 
   const { teamPct } = teamPercentages();
-  const barW = 200, barH = 10;
 
   ctx.font = "bold 12px 'Noto Sans TC', sans-serif";
   ctx.textAlign = 'left';
   ctx.fillStyle = TEAM_UI.red.text;
   ctx.fillText(`${TEAM_UI.red.label}  ${teamPct.red.toFixed(1)}%`, 12, 4);
-  ctx.fillStyle = TEAM_UI.red.barBg;
-  ctx.fillRect(12, 22, barW, barH);
-  ctx.fillStyle = TEAM_UI.red.barFill;
-  ctx.fillRect(12, 22, barW * Math.min(1, teamPct.red / 100), barH);
-
   ctx.textAlign = 'right';
   ctx.fillStyle = TEAM_UI.blue.text;
   ctx.fillText(`${teamPct.blue.toFixed(1)}%  ${TEAM_UI.blue.label}`, W - 12, 4);
-  ctx.fillStyle = TEAM_UI.blue.barBg;
-  ctx.fillRect(W - 12 - barW, 22, barW, barH);
+
+  // 拔河推拉條 — 以「紅佔地 /(紅佔地+藍佔地)」當拉繩比例,忽略中立區(黑色噴霧
+  // 清空的地盤不算在拉扯裡),平手或都還沒佔地時指針停在正中央,哪隊佔地明顯
+  // 領先就把指針往那隊推過去,直接呈現「誰目前拉贏誰」而不是各自的絕對佔比。
+  const barW = 300, barH = 12;
+  const barX = W / 2 - barW / 2, barY = 29;
+  const contested = teamPct.red + teamPct.blue;
+  const frac = contested > 0 ? teamPct.red / contested : 0.5;
+  const splitX = barX + barW * frac;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, barH / 2);
+  ctx.clip();
+  ctx.fillStyle = TEAM_UI.red.barFill;
+  ctx.fillRect(barX, barY, splitX - barX, barH);
   ctx.fillStyle = TEAM_UI.blue.barFill;
-  ctx.fillRect(W - 12 - barW + barW * (1 - Math.min(1, teamPct.blue / 100)), 22, barW * Math.min(1, teamPct.blue / 100), barH);
+  ctx.fillRect(splitX, barY, barX + barW - splitX, barH);
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.roundRect(barX, barY, barW, barH, barH / 2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 50/50 中線參考
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(W / 2, barY - 3);
+  ctx.lineTo(W / 2, barY + barH + 3);
+  ctx.stroke();
+
+  // 領先指針 — 白色小三角形,指向目前拉繩位置
+  ctx.beginPath();
+  ctx.moveTo(splitX - 6, barY - 8);
+  ctx.lineTo(splitX + 6, barY - 8);
+  ctx.lineTo(splitX, barY - 1);
+  ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.fill();
 
   if (sg.timeLeft <= FINAL_COUNTDOWN_START) {
     const flashPulse = 0.14 + Math.sin(Date.now() / 220) * 0.07;
@@ -434,17 +470,11 @@ export default {
   cover: '09_shoot/shoot_cover.png',
 
   tutorial: {
-    goal: '2v2 佔地對決！移動時會自動噴漆佔地，比賽結束時佔地比例最高的隊伍獲勝！',
-    controls: [
-      { key: '🕹️', text: '移動（同時自動噴漆佔地）' },
-      { key: 'Ⓐ', text: '衝刺（按住不放，冷卻好就會自動再衝一次；撞到蓄爆中的對手會讓他歸零並暈眩）' },
-    ],
-    tips: [
-      '吃地上的黃色能量點可以蓄能，蓄滿後進入 3 秒倒數，時間到會自動在原地引爆、佔領一大片範圍',
-      '在自己地盤上吸收能量點效率比較差，去對方或中立地盤搶效率更高',
-      '能量點吸收效率會隨比賽進行提升，後期蓄能更快、爆炸更頻繁',
-      '地圖會不定期連續噴出好幾波黑色噴霧，範圍內所有人的地盤都會變回中立',
-      '最後 20 秒畫面會閃紅示警，把握最後衝刺機會',
+    pages: [
+      '09_shoot/tutorial/1.png',
+      '09_shoot/tutorial/2.png',
+      '09_shoot/tutorial/3.png',
+      '09_shoot/tutorial/4.png',
     ],
   },
 

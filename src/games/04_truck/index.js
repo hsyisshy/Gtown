@@ -494,5 +494,5 @@ function _finish(globalState) {
 
   const red = _teamTotal('red'), blue = _teamTotal('blue');
   const winnerTeam = red > blue ? 'red' : blue > red ? 'blue' : null;
-  tk._endCb?.(winnerTeam);
+  tk._endCb?.(winnerTeam, { label: '收集數', red: String(red), blue: String(blue) });
 }

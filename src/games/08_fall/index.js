@@ -4,18 +4,19 @@
  * Red vs blue, 2 per team (playersPerTeam: 2); requireFullTeams means both
  * sides always field exactly 2 real players before the match can start.
  * Everyone starts on one solid floating platform; at 20s it permanently
- * cracks into 3 pieces (5 in the "裂成五塊"
- * crazy-mode mutator) and starts wobbling. Rising obstacles, falling
- * star/gem/fake-trap pickups, and periodic screen-wide "big hazard" columns
- * whittle down each player's 5 lives — falling off the platform costs a life
- * and respawns you, it only eliminates you once lives hit 0. A full team wipe
+ * cracks into 3 pieces and starts wobbling. Rising obstacles, falling
+ * star/gem pickups, and periodic screen-wide "big hazard" columns whittle
+ * down each player's 5 lives — falling off the platform costs a life and
+ * respawns you, it only eliminates you once lives hit 0. A full team wipe
  * ends the match immediately (simultaneous wipe = draw); otherwise at time's
  * up the winner is whoever has more survivors, then more total lives, then
  * whoever was hit least recently.
  *
- * "瘋狂模式" (crazy mode) is exposed through the hub's normal mode-select
- * picker (`maps`) — picking it rolls one random mutator for the whole match,
- * exactly like the prototype's checkbox did.
+ * The prototype's "瘋狂模式" (crazy mode) checkbox — a random per-match
+ * mutator (ice-slide movement, fake-trap items, one-life, stomp-damage,
+ * five-way platform split) — isn't ported: only the standard ruleset ships,
+ * so there's no mode picker and picking this game goes straight into the
+ * team draw.
  *
  * Physics runs in a fixed logical space (900x600) so tuning is independent of
  * the screen resolution; draw() uniform-scales + letterboxes into the actual
@@ -78,15 +79,6 @@ const SLOT_DEFS = [
 ];
 // 開局站位:讓兩隊交錯站(由左到右是 P1、P3、P2、P4),而不是同隊擠在一起
 const START_POSITION_SLOTS = [0, 2, 1, 3];
-
-// 瘋狂模式:每局隨機從中抽 1 條套用
-const CRAZY_MUTATORS = [
-  { id: 'ice', name: '冰面滑動', desc: '移動有慣性,滑起來更誇張' },
-  { id: 'fakeItem', name: '假道具', desc: '外觀明顯不同的陷阱道具混在其中,而且一落地就會消失' },
-  { id: 'oneLife', name: '一命模式', desc: '所有人只有 1 條命,一次失誤就淘汰' },
-  { id: 'stompDamage', name: '踩人扣血', desc: '踩到對手直接扣血,取代原本的暈眩效果' },
-  { id: 'fiveSplit', name: '裂成五塊', desc: '平台永久裂成五塊,巨型威脅會同時攻擊兩塊不相鄰的板塊' },
-];
 
 // --- 圖片素材(角色圖預設朝左) -------------------------------------------------
 function loadImg(src) { const img = new Image(); img.src = src; return img; }
@@ -161,7 +153,7 @@ function startSolid() {
 function triggerPermanentSplit() {
   fg.permanentSplit = true;
   fg.phase = 'permanentSplit';
-  if (!fg.crackPlan) fg.crackPlan = planSplit(fg.activeMutator?.id === 'fiveSplit' ? 5 : 3);
+  if (!fg.crackPlan) fg.crackPlan = planSplit(3);
   fg.pieces = fg.crackPlan;
   fg.bigHazardTimer = 3;
 
@@ -194,16 +186,7 @@ function spawnObstacle() {
 function spawnItem() {
   const x = 60 + Math.random() * (W - 120);
   const speed = 2.4 + diff() * 1.2;
-  let type;
-  const am = fg.activeMutator;
-  if (am && am.id === 'fakeItem') {
-    const r = Math.random();
-    type = r < 0.4 ? 'star' : (r < 0.7 ? 'gem' : 'fake');
-  } else if (am && am.id === 'oneLife') {
-    type = 'star'; // 一命模式沒有補血的意義,只留無敵星星
-  } else {
-    type = Math.random() < 0.6 ? 'star' : 'gem';
-  }
+  const type = Math.random() < 0.6 ? 'star' : 'gem';
   // 從上方掉落,落到板塊上會停留幾秒等人撿,掉進縫隙就直接消失
   fg.items.push({ x, y: -30, r: 13, vy: speed, type, state: 'falling', restPiece: null, restTimer: 0 });
 }
@@ -221,26 +204,7 @@ function spawnBgParticle() {
 function spawnBigHazard() {
   if (!fg.pieces.length) return;
 
-  // 裂成五塊模式:一次同時攻擊兩塊不相鄰的板塊
-  if (fg.activeMutator?.id === 'fiveSplit' && fg.pieces.length >= 4) {
-    const validPairs = [];
-    for (let a = 0; a < fg.pieces.length; a++) {
-      for (let b = a + 2; b < fg.pieces.length; b++) validPairs.push([a, b]);
-    }
-    if (validPairs.length > 0) {
-      const [ia, ib] = validPairs[Math.floor(Math.random() * validPairs.length)];
-      for (const idx of [ia, ib]) {
-        const piece = fg.pieces[idx];
-        const w = Math.min(piece.w, piece.w * (0.65 + Math.random() * 0.3));
-        const maxX = piece.x + piece.w - w;
-        const x = piece.x + Math.random() * Math.max(0, maxX - piece.x);
-        fg.bigHazards.push({ x, w, state: 'warn', timer: BIG_HAZARD_WARN_SEC });
-      }
-      return;
-    }
-  }
-
-  // 一般模式:排除上一次選過的板塊,優先挑目前有玩家站著的板塊
+  // 排除上一次選過的板塊,優先挑目前有玩家站著的板塊
   const candidates = fg.pieces.length > 1 ? fg.pieces.filter(p => p !== fg.lastBigHazardPiece) : fg.pieces;
   const alivePlayers = fg.players.filter(p => !p.eliminated);
   let candidatePiece = null;
@@ -275,7 +239,6 @@ function makePlayer(def, x, deviceId, name) {
     stunTimer: 0,
     facing: 'left',
     prevY: PLATFORM_Y - PLAYER_H,
-    iceVX: 0,
     ctrl: { dx: 0, jumpHeld: false },
   };
 }
@@ -293,15 +256,9 @@ function resolveStomps() {
       const headY = target.y + STOMP_HEAD_MARGIN;
       const horizOverlap = playerHitRight(attacker) > playerHitLeft(target) && playerHitLeft(attacker) < playerHitRight(target);
       if (horizOverlap && feetPrev <= headY && feetNow >= target.y - 6) {
-        if (fg.activeMutator?.id === 'stompDamage') {
-          loseLife(target);
-          target.invuln = 40;
-          target.flashTimer = Math.max(target.flashTimer, 30);
-        } else {
-          target.stunTimer = STOMP_STUN_FRAMES;
-          target.flashTimer = Math.max(target.flashTimer, 30);
-          vibrate(target);
-        }
+        target.stunTimer = STOMP_STUN_FRAMES;
+        target.flashTimer = Math.max(target.flashTimer, 30);
+        vibrate(target);
         attacker.vy = -STOMP_BOUNCE;
         attacker.y = target.y - PLAYER_H - 2;
         fg.hitEffects.push({ x: target.x + PLAYER_W / 2, y: target.y + 10, timer: 20, maxTimer: 20 });
@@ -375,7 +332,11 @@ function _finish(globalState, winnerTeam) {
     if (!p.deviceId || !globalState.players?.[p.deviceId]) continue;
     globalState.players[p.deviceId].score = (globalState.players[p.deviceId].score || 0) + Math.max(0, p.lives);
   }
-  fg._endCb?.(winnerTeam);
+  fg._endCb?.(winnerTeam, {
+    label: '剩餘生命',
+    red: String(teamLivesSum('red')),
+    blue: String(teamLivesSum('blue')),
+  });
 }
 
 function vibrate(p) {
@@ -390,34 +351,6 @@ function vibrate(p) {
 
 function drawImageSafe(ctx, img, x, y, w, h) {
   if (img && img.complete && img.naturalWidth > 0) ctx.drawImage(img, x, y, w, h);
-}
-
-function drawFakeItem(ctx, cx, cy, r) {
-  // 假道具:刻意畫成暗紅尖刺球+白色X,外觀跟真道具明顯不同
-  ctx.save();
-  ctx.translate(cx, cy);
-  const spikes = 8;
-  ctx.beginPath();
-  for (let i = 0; i < spikes * 2; i++) {
-    const ang = i * Math.PI / spikes;
-    const rr = i % 2 === 0 ? r * 1.35 : r * 0.7;
-    const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fillStyle = '#6b0f0f';
-  ctx.fill();
-  ctx.strokeStyle = '#2a0505';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.strokeStyle = '#fff';
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-r * 0.5, -r * 0.5); ctx.lineTo(r * 0.5, r * 0.5);
-  ctx.moveTo(r * 0.5, -r * 0.5); ctx.lineTo(-r * 0.5, r * 0.5);
-  ctx.stroke();
-  ctx.restore();
 }
 
 function drawPlatformPiece(ctx, piece, y) {
@@ -622,23 +555,11 @@ export default {
   emoji: '❄️',
   cover: '08_fall/fall_cover.png',
 
-  maps: [
-    { name: '一般模式', description: '標準規則', enabled: true },
-    { name: '瘋狂模式', description: '開局隨機套用一條特殊規則', enabled: true },
-  ],
-
   tutorial: {
-    goal: '2v2 大逃殺！腳下浮動平台會裂成好幾塊，掉出畫面外會扣血，5 條命扣光就淘汰。時間到或對方全滅就獲勝！',
-    controls: [
-      { key: '⬅➡', text: '左右移動' },
-      { key: 'Ⓐ', text: '跳躍（按住不放，落地時會自動再跳一次）' },
-    ],
-    tips: [
-      '跳到對手頭上可以把他踩暈，讓他短暫無法操作——同隊隊友頭上踩了沒事',
-      '★金色星星＝短暫無敵　◆紫色寶石＝補一條命（滿血時沒有用）',
-      '20 秒後平台會永久裂成三塊，之後不時有巨型威脅從畫面下方整條衝出，只能左右閃開',
-      '時間到時比較：存活人數 → 剩餘總命數 → 最晚被扣血的隊伍獲勝',
-      '「瘋狂模式」開局會隨機套用一條特殊規則：冰面滑動、假道具陷阱、一命模式、踩人扣血、平台裂成五塊',
+    pages: [
+      '08_fall/tutorial/1.png',
+      '08_fall/tutorial/2.png',
+      '08_fall/tutorial/3.png',
     ],
   },
 
@@ -652,21 +573,13 @@ export default {
     const redIds = playing.filter(id => teams[id] === 'red');
     const blueIds = playing.filter(id => teams[id] === 'blue');
 
-    const crazyModeEnabled = globalState.selectedMap === 1;
-    const activeMutator = crazyModeEnabled
-      ? CRAZY_MUTATORS[Math.floor(Math.random() * CRAZY_MUTATORS.length)]
-      : null;
-    const maxLives = activeMutator?.id === 'oneLife' ? 1 : STARTING_LIVES;
-
     const players = SLOT_DEFS.map((def, i) => {
       const pool = def.team === 'red' ? redIds : blueIds;
       const poolIdx = def.team === 'red' ? i : i - 2;
       const deviceId = pool[poolIdx];
       const x = W / 2 - 105 + START_POSITION_SLOTS[i] * 70;
       const name = truncateName(globalState.players?.[deviceId]?.name ?? `Player ${deviceId}`);
-      const p = makePlayer(def, x, deviceId, name);
-      p.lives = maxLives;
-      return p;
+      return makePlayer(def, x, deviceId, name);
     });
 
     fg = {
@@ -676,8 +589,7 @@ export default {
       permanentSplit: false,
       permanentSplitWarned: false,
       crackPlan: null,
-      activeMutator,
-      maxLives,
+      maxLives: STARTING_LIVES,
       phase: 'solid',
       pieces: [],
       obstacles: [], obstacleTimer: 1.0,
@@ -709,7 +621,7 @@ export default {
     if (!fg.permanentSplit) {
       if (!fg.permanentSplitWarned && fg.t >= SPLIT_TRIGGER_SECONDS - SPLIT_WARN_SEC) {
         fg.permanentSplitWarned = true;
-        fg.crackPlan = planSplit(fg.activeMutator?.id === 'fiveSplit' ? 5 : 3);
+        fg.crackPlan = planSplit(3);
         fg.phase = 'permanentWarning';
       }
       if (fg.t >= SPLIT_TRIGGER_SECONDS) triggerPermanentSplit();
@@ -739,7 +651,7 @@ export default {
           if (overlap && it.y + it.r >= effY - 4 && it.y - it.r <= effY + 12) {
             it.state = 'resting';
             it.restPiece = piece;
-            it.restTimer = it.type === 'fake' ? 0 : 6.0;
+            it.restTimer = 6.0;
             it.y = effY - it.r - 2;
             break;
           }
@@ -799,23 +711,12 @@ export default {
         jumpPressed = p.ctrl.jumpHeld;
       }
 
-      if (fg.activeMutator?.id === 'ice') {
-        const ICE_ACCEL = 0.5, ICE_MAX = 7.6, ICE_FRICTION = 0.965;
-        if (wantLeft) p.iceVX -= ICE_ACCEL * frames;
-        if (wantRight) p.iceVX += ICE_ACCEL * frames;
-        if (!wantLeft && !wantRight) p.iceVX *= Math.pow(ICE_FRICTION, frames);
-        p.iceVX = Math.max(-ICE_MAX, Math.min(ICE_MAX, p.iceVX));
-        if (p.iceVX < -0.05) p.facing = 'left';
-        else if (p.iceVX > 0.05) p.facing = 'right';
-        p.x += p.iceVX * frames + (p.kbVX || 0) * frames;
-      } else {
-        let vx = 0;
-        if (wantLeft) vx -= 5.6;
-        if (wantRight) vx += 5.6;
-        if (vx < 0) p.facing = 'left';
-        else if (vx > 0) p.facing = 'right';
-        p.x += vx * frames * 0.5 + (p.kbVX || 0) * frames;
-      }
+      let vx = 0;
+      if (wantLeft) vx -= 5.6;
+      if (wantRight) vx += 5.6;
+      if (vx < 0) p.facing = 'left';
+      else if (vx > 0) p.facing = 'right';
+      p.x += vx * frames * 0.5 + (p.kbVX || 0) * frames;
       p.kbVX = (p.kbVX || 0) * Math.pow(0.85, frames);
       p.x = Math.max(0, Math.min(W - PLAYER_W, p.x));
 
@@ -890,12 +791,6 @@ export default {
           if (it.type === 'star') {
             p.invincibleTimer = STAR_DURATION;
             SFX.ding();
-          } else if (it.type === 'fake') {
-            loseLife(p);
-            p.invuln = 40;
-            p.flashTimer = 40;
-            fg.screenFlash = Math.max(fg.screenFlash, 0.5);
-            fg.hitEffects.push({ x: p.x + PLAYER_W / 2, y: p.y + PLAYER_H / 2, timer: 18, maxTimer: 18 });
           } else {
             if (p.lives < fg.maxLives) p.lives += 1;
             SFX.ding();
@@ -974,11 +869,8 @@ export default {
     for (const o of fg.obstacles) drawImageSafe(ctx, obsSmallImg, o.x - o.w / 2, o.y - o.h / 2, o.w, o.h);
 
     for (const it of fg.items) {
-      if (it.type === 'fake') drawFakeItem(ctx, it.x, it.y, it.r);
-      else {
-        const img = it.type === 'star' ? starImg : gemImg;
-        drawImageSafe(ctx, img, it.x - it.r, it.y - it.r, it.r * 2, it.r * 2);
-      }
+      const img = it.type === 'star' ? starImg : gemImg;
+      drawImageSafe(ctx, img, it.x - it.r, it.y - it.r, it.r * 2, it.r * 2);
     }
 
     for (const bh of fg.bigHazards) {

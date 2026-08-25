@@ -1,3 +1,5 @@
+import { BGM_RELATIVE_GAIN } from './constants.js';
+
 /**
  * Looping in-game BGM with seamless-feeling loops.
  *
@@ -10,7 +12,11 @@
  *
  * Volume follows the screen settings panel: initial value comes from the
  * persisted 背景音樂 setting, and live slider moves arrive via the
- * 'bgm-volume-change' window event.
+ * 'bgm-volume-change' window event. `volume`/`base`/`target` all stay in
+ * that raw 0-1 slider-fraction space; BGM_RELATIVE_GAIN is only applied at
+ * the last step where it actually reaches `el.volume` (see its comment in
+ * shared/constants.js for why BGM needs to sit below SFX at the same
+ * slider position).
  */
 export function createLoopingBgm(src, {
   seamFadeSec = 3,
@@ -53,7 +59,7 @@ export function createLoopingBgm(src, {
       if (t < seamFadeSec) envelope = t / seamFadeSec;
       else if (t > d - seamFadeSec) envelope = Math.max(0, (d - t) / seamFadeSec);
     }
-    el.volume = Math.max(0, Math.min(1, base * envelope));
+    el.volume = Math.max(0, Math.min(1, base * envelope * BGM_RELATIVE_GAIN));
   }
 
   function fadeTo(v, ms) {

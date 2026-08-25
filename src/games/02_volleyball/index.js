@@ -151,7 +151,12 @@ export default {
           }
           const winnerId = server(vbState.winner)?.deviceId;
           const winnerTeam = winnerId ? (vbState._globalState?.teams?.[winnerId] ?? null) : null;
-          vbState._endCb?.(winnerTeam);
+          // players.left was built from the red roster, players.right from blue.
+          vbState._endCb?.(winnerTeam, {
+            label: '局分',
+            red: String(vbState.scores.left),
+            blue: String(vbState.scores.right),
+          });
         } else {
           spawnBall(vbState.serving);
           vbState.phase = 'serving';

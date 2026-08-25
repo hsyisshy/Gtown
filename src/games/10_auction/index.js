@@ -185,7 +185,7 @@ function finish(globalState) {
   const winnerTeam = ag.teamMoney[0] === ag.teamMoney[1]
     ? null
     : (ag.teamMoney[0] > ag.teamMoney[1] ? 'red' : 'blue');
-  ag._endCb?.(winnerTeam);
+  ag._endCb?.(winnerTeam, { label: '金幣', red: `🪙${ag.teamMoney[0]}`, blue: `🪙${ag.teamMoney[1]}` });
 }
 
 // --- 繪製 -------------------------------------------------------------------
@@ -194,15 +194,48 @@ function drawGiftIcon(ctx, type, cx, cy, size, animFrame) {
   const frames = GIFT_FRAMES[type];
   const img = frames ? frames[animFrame % frames.length] : GIFT_IMG[type];
   if (!img?.complete || !img.naturalWidth) return;
+  const t = Date.now() / 1000;
   ctx.save();
   ctx.translate(cx, cy);
   if (type === 'normal') {
-    ctx.rotate(Math.sin(Date.now() / 500) * 0.05);
-  } else if (!frames) {
-    ctx.translate(0, Math.sin(Date.now() / 600) * 4);
+    // Box stays put; only the bow at the top wiggles — same trick as the
+    // original's bow-layer clip-path overlay (clip to the top slice, rotate
+    // around a pivot near the top instead of the image center).
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    const pivotY = -size / 2 + size * 0.26;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-size / 2, -size / 2, size, size * 0.43);
+    ctx.clip();
+    ctx.translate(0, pivotY);
+    ctx.rotate(Math.sin(t * 2.856) * 0.031); // ~1.8deg, 2.2s period
+    ctx.drawImage(img, -size / 2, -size / 2 - pivotY, size, size);
+    ctx.restore();
+  } else if (frames) {
+    // angel/devil: the whole box gently bobs (original's .float class)
+    // while its 8-frame wing-flap animation plays.
+    ctx.translate(0, -1 + Math.sin(t * 1.963) * 4); // 3.2s period
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+  } else {
+    // good/bad: a quick rotational flinch once every ~2.5s (original's
+    // .wobble class), not a continuous drift.
+    const phase = (t % 2.5) / 2.5;
+    let deg = 0;
+    if (phase >= 0.85 && phase < 0.90) deg = -2 * ((phase - 0.85) / 0.05);
+    else if (phase >= 0.90 && phase < 0.95) deg = -2 + 4 * ((phase - 0.90) / 0.05);
+    else if (phase >= 0.95) deg = 2 - 2 * ((phase - 0.95) / 0.05);
+    ctx.rotate(deg * Math.PI / 180);
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
   }
-  ctx.drawImage(img, -size / 2, -size / 2, size, size);
   ctx.restore();
+}
+
+function makeDustMotes() {
+  return Array.from({ length: 12 }, (_, i) => ({
+    x: 0.12 + ((i * 17) % 76) / 100,
+    y: 0.22 + ((i * 23) % 58) / 100,
+    delay: i * 0.21,
+  }));
 }
 
 function drawTopBar(ctx) {
@@ -348,37 +381,193 @@ function drawWinner(ctx) {
 }
 
 function drawSuspense(ctx) {
-  const pulse = 1 + Math.sin(Date.now() / 160) * 0.08;
+  const progress = Math.min(1, Math.max(0, 1 - ag.phaseTimer / SUSPENSE_TIME));
+  const t = Date.now() / 1000;
+  const r = ag.result;
+
+  const pulse = 1 + Math.sin(t * 6.2) * 0.06;
   ctx.save();
-  const grad = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, 160);
-  grad.addColorStop(0, 'rgba(255, 216, 91, 0.35)');
-  grad.addColorStop(1, 'rgba(20, 10, 30, 0)');
+  const grad = ctx.createRadialGradient(W / 2, H / 2, 10, W / 2, H / 2, 200);
+  grad.addColorStop(0, 'rgba(255, 216, 91, 0.32)');
+  grad.addColorStop(1, 'rgba(15, 8, 22, 0.1)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, W, H);
   ctx.restore();
 
+  // spotlight beam converging on the platform
+  ctx.save();
+  ctx.globalAlpha = 0.55 + Math.sin(t * 1.3) * 0.08;
+  const beamGrad = ctx.createLinearGradient(W / 2 - 130, 0, W / 2 + 130, 0);
+  beamGrad.addColorStop(0, 'rgba(255,232,167,0)');
+  beamGrad.addColorStop(0.5, 'rgba(255,242,189,0.22)');
+  beamGrad.addColorStop(1, 'rgba(255,232,167,0)');
+  ctx.fillStyle = beamGrad;
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 30, 40);
+  ctx.lineTo(W / 2 + 30, 40);
+  ctx.lineTo(W / 2 + 130, H);
+  ctx.lineTo(W / 2 - 130, H);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // auction platform
+  ctx.save();
+  ctx.fillStyle = 'rgba(140, 90, 45, 0.5)';
+  ctx.strokeStyle = 'rgba(60, 35, 18, 0.8)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(W / 2, H / 2 + 118, 120, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // drifting dust motes caught in the spotlight
+  ag.dustMotes?.forEach(m => {
+    const local = ((t + m.delay) % 2.5) / 2.5;
+    const opacity = local < 0.35 ? (local / 0.35) * 0.5 : Math.max(0, 0.5 * (1 - (local - 0.35) / 0.65));
+    if (opacity <= 0) return;
+    const dx = m.x * W + local * 8;
+    const dy = m.y * H + 12 - 50 * local;
+    ctx.fillStyle = `rgba(244, 220, 166, ${opacity})`;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // "LOT 0N" plaque and each team's final bid, fading in then retiring
+  // before the curtains part
+  const infoT = progress < 0.1 ? progress / 0.1 : progress > 0.82 ? Math.max(0, 1 - (progress - 0.82) / 0.18) : 1;
+  if (infoT > 0.01) {
+    ctx.save();
+    ctx.globalAlpha = infoT;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.translate(W / 2, 58);
+    ctx.rotate(-0.035);
+    ctx.fillStyle = 'rgba(244, 223, 170, 0.92)';
+    ctx.strokeStyle = 'rgba(112, 68, 31, 0.9)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(-46, -14, 92, 28, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#51301a';
+    ctx.font = "bold 12px 'Noto Sans TC', sans-serif";
+    ctx.fillText(`LOT ${String(ag.roundIndex + 1).padStart(2, '0')}`, 0, 1);
+    ctx.restore();
+
+    const placardY = H / 2 + 12;
+    ['red', 'blue'].forEach((team, i) => {
+      const x = i === 0 ? W / 2 - 175 : W / 2 + 175;
+      const rot = i === 0 ? -0.14 : 0.14;
+      ctx.save();
+      ctx.translate(x, placardY);
+      ctx.rotate(rot);
+      ctx.fillStyle = TEAM_UI[team].fill;
+      ctx.strokeStyle = 'rgba(40,20,10,0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(-42, -16, 84, 32, 6);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.font = "bold 12px 'Noto Sans TC', sans-serif";
+      ctx.fillText(`🪙 ${r.teamBids[i]}`, 0, 1);
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  // gift being inspected: gentle tilt + pulse, like it's being turned over
   ctx.save();
   ctx.translate(W / 2, H / 2 - 20);
+  ctx.rotate(Math.sin(t * 1.9) * 0.05);
   ctx.scale(pulse, pulse);
   drawGiftIcon(ctx, ag.tags[ag.roundIndex], 0, 0, 140, ag.animFrame);
   ctx.restore();
+
+  // stage curtains part dramatically in the final stretch
+  const openT = progress < 0.72 ? 0 : (progress - 0.72) / 0.28;
+  if (openT < 0.999) {
+    const curtainW = W * 0.15;
+    ['left', 'right'].forEach(side => {
+      ctx.save();
+      const slide = openT * curtainW * 1.6;
+      const x = side === 'left' ? -slide : W - curtainW + slide;
+      ctx.beginPath();
+      ctx.rect(x, 0, curtainW, H);
+      ctx.clip();
+      for (let sx = x - curtainW; sx < x + curtainW * 2; sx += 14) {
+        ctx.fillStyle = (Math.round(sx / 14) % 2 === 0) ? '#8f3229' : '#b54a38';
+        ctx.fillRect(sx, 0, 14, H);
+      }
+      ctx.restore();
+    });
+  }
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = '#ffe9b0';
   ctx.font = "bold 18px 'Noto Sans TC', sans-serif";
-  ctx.fillText('鑑定中…', W / 2, H / 2 + 90);
+  ctx.fillText('鑑定中…', W / 2, H - 42);
   ctx.font = "12px 'Noto Sans TC', sans-serif";
-  ctx.fillStyle = '#a090cc';
-  const winnerUi = TEAM_UI[ag.result.winnerTeam];
-  ctx.fillText(`${winnerUi.label}以 🪙 ${ag.result.price} 得標，正在開箱…`, W / 2, H / 2 + 115);
+  ctx.fillStyle = '#c9b3e6';
+  const winnerUi = TEAM_UI[r.winnerTeam];
+  ctx.fillText(`${winnerUi.label}以 🪙 ${r.price} 得標，正在開箱…`, W / 2, H - 20);
 }
 
 function drawResult(ctx) {
   const r = ag.result;
   const good = r.type === 'good';
   const ui = TEAM_UI[r.winnerTeam];
+  const isJackpot = good && ag.tags[ag.roundIndex] === 'devil';
+  const elapsed = Math.min(RESULT_PAUSE, Math.max(0, RESULT_PAUSE - ag.phaseTimer));
+
+  // bad outcome gets a short decaying screen shake, like the box slammed shut
+  let shakeX = 0, shakeY = 0;
+  if (!good && elapsed < 0.5) {
+    const decay = 1 - elapsed / 0.5;
+    shakeX = Math.sin(elapsed * 90) * 7 * decay;
+    shakeY = Math.cos(elapsed * 70) * 4 * decay;
+  }
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
+
+  const glow = ctx.createRadialGradient(W / 2, H / 2 - 40, 10, W / 2, H / 2 - 40, 170);
+  if (good) {
+    glow.addColorStop(0, 'rgba(255, 247, 165, 0.5)');
+    glow.addColorStop(1, 'rgba(255, 247, 165, 0)');
+  } else {
+    glow.addColorStop(0, 'rgba(113, 54, 107, 0.4)');
+    glow.addColorStop(1, 'rgba(113, 54, 107, 0)');
+  }
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
   drawGiftIcon(ctx, good ? 'good' : 'bad', W / 2, H / 2 - 50, 130, 0);
+
+  if (good) {
+    // coins burst outward from the gift and arc up, fading as they go
+    const coinCount = 11;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '20px sans-serif';
+    for (let i = 0; i < coinCount; i++) {
+      const local = Math.min(1, Math.max(0, (elapsed - i * 0.055) / 0.7));
+      if (local <= 0) continue;
+      const ease = 1 - (1 - local) * (1 - local);
+      const dx = (i - 5) * 28 * ease;
+      const dy = (-65 - (i % 3) * 30) * ease;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, 1 - local);
+      ctx.translate(W / 2 + dx, H / 2 - 50 + dy);
+      ctx.rotate(ease * 7.3);
+      ctx.fillText('🪙', 0, 0);
+      ctx.restore();
+    }
+  }
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -389,14 +578,29 @@ function drawResult(ctx) {
   ctx.font = "bold 40px 'Noto Sans TC', sans-serif";
   ctx.fillText(`${good ? '+' : '-'}${good ? r.reward : r.price}`, W / 2, H / 2 + 90);
 
+  if (isJackpot) {
+    const pop = Math.min(1, elapsed / 0.45);
+    const overshoot = pop < 1 ? 0.6 + pop * 0.4 + Math.sin(pop * Math.PI) * 0.08 : 1;
+    ctx.save();
+    ctx.globalAlpha = pop;
+    ctx.translate(W / 2, H / 2 + 118);
+    ctx.scale(overshoot, overshoot);
+    ctx.fillStyle = '#ffe99b';
+    ctx.font = "bold 16px 'Noto Sans TC', sans-serif";
+    ctx.fillText('惡魔珍品 ×4', 0, 0);
+    ctx.restore();
+  }
+
   ctx.font = "13px 'Noto Sans TC', sans-serif";
   ctx.fillStyle = ui.text;
   ctx.fillText(
     good
       ? `${ui.label}拿回 ${r.reward} 枚金幣，淨賺 ${r.net} 枚，目前 🪙 ${ag.teamMoney[r.winnerTeamIdx]}`
       : `${ui.label}賠掉 ${r.price} 枚出價，目前 🪙 ${ag.teamMoney[r.winnerTeamIdx]}`,
-    W / 2, H / 2 + 120,
+    W / 2, H / 2 + (isJackpot ? 145 : 120),
   );
+
+  ctx.restore();
 }
 
 // --- game module -------------------------------------------------------------
@@ -499,6 +703,7 @@ export default {
         if (ag.phaseTimer <= 0) {
           ag.phase = 'suspense';
           ag.phaseTimer = SUSPENSE_TIME;
+          ag.dustMotes = makeDustMotes();
           SFX.loading();
         }
         break;

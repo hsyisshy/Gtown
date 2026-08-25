@@ -6,7 +6,7 @@ export const MSG = {
   SELECT_GAME:     'select_game',
   RANDOM_PICK:     'random_pick',    // master requests the bingo-spin random pick
   SELECT_MAP:      'select_map',     // master picks a map { type, mapIndex }
-  CHEER:           'cheer',          // watcher sends { type, emoji } or { type, text } (danmaku)
+  CHEER:           'cheer',          // watcher sends { type, emoji } (sticker id, see screen/main.js CHEER_STICKER_SRC) or { type, text } (danmaku)
   REQUEST_RESULTS: 'request_results',
   SWITCH_TEAM:     'switch_team',    // lobby-only: self-serve red<->blue swap, no approval needed
   REQUEST_HOST:    'request_host',   // guest asks to become host; screen relays to current host
@@ -51,7 +51,12 @@ export const STATE_KEY = {
 
 // PREP phase timing (src/screen/main.js), shared so the controller's own
 // "抽籤中" hold matches the screen's reel-spin duration exactly.
-export const PREP_REEL_DURATION_MS = 2400;   // CSS transition-duration for the reel scroll
+// CSS transition-duration for the reel scroll — matches the length of the
+// slot-machine spin sound (public/drawppl.mp3, ~3.5s — trimmed down from a
+// longer source clip to just its climax + decay tail, see the trim note by
+// reelSpinSfx in screen/main.js) so the reel visually lands right as the
+// sound finishes instead of one cutting the other off.
+export const PREP_REEL_DURATION_MS = 3500;
 export const PREP_READY_TIMEOUT_MS = 20000;  // grace period before host override buttons unlock
 
 // How-to-play picture book (src/screen/main.js) — each playing device reads
@@ -60,6 +65,15 @@ export const PREP_READY_TIMEOUT_MS = 20000;  // grace period before host overrid
 export const TUTORIAL_READY_TIMEOUT_MS = 45000;
 
 export const MAX_PLAYERS = 20;
+
+// BGM plays continuously under everything else while button/hit SFX are
+// short and rare — at the same settings-panel slider position they'd read as
+// equally loud, which makes the constant background track dominate over the
+// game's actual feedback sounds. This scales BGM_VOLUME down wherever it
+// reaches an actual <audio> element's .volume (lobby BGM, intro video, every
+// in-game loopingBgm.js track) — never applied to the slider's own displayed
+// percentage, so the UI still shows a plain 0-100% position.
+export const BGM_RELATIVE_GAIN = 0.6;
 
 // Planned final lineup size for the game-select screen/controller — until
 // this many games actually exist, the remaining slots render as "coming

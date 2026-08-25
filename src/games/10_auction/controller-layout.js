@@ -1,111 +1,138 @@
 /**
- * 村莊拍賣 controller — no joystick/buttons, just a secret bid slider + lock
- * button. Each round's max bid and gift type land via a screen->controller
- * message (type 'auction_round', routed through controller/main.js's generic
- * onMessage->layout forwarding) since this game has no continuous per-frame
- * state to poll like the physics games do.
+ * 村莊拍賣 controller — same joystick + ABXY diamond shell every other game
+ * uses (previously this had its own bespoke slider+button panel, which read
+ * as an out-of-place screen next to every other game's controller). Stick
+ * up/down raises/lowers this round's bid, A locks it in.
+ *
+ * Round/gift/timer/lock-status are all already public on the shared screen
+ * (drawTopBar/drawBid/drawLockStatus in index.js) — the only thing that
+ * genuinely can't go there is each player's OWN bid amount, so that's the
+ * one piece of private HUD this layout shows, in the gamepad's otherwise-
+ * empty middle zone.
+ *
+ * Bid value is accumulated LOCALLY on the phone (not round-tripped through
+ * the screen) so the readout responds instantly to the stick, exactly like
+ * the old slider's 'input' event did — only the resulting value is sent to
+ * the screen, via the same { action: 'bid', value } / { action: 'lock' }
+ * messages the original slider UI already used, so 10_auction/index.js's
+ * onInput() needed no changes at all.
  */
-const GIFT_INFO = {
-  angel:  { icon: '👼', label: '天使禮物', note: '好禮物機率 70%・拿回 1.5 倍' },
-  normal: { icon: '🎁', label: '普通禮物', note: '好壞機率各半・拿回 2 倍' },
-  devil:  { icon: '😈', label: '惡魔禮物', note: '好禮物機率 25%・拿回 4 倍' },
-};
+import { createJoystick } from '../../controller/joystick.js';
+
+const BID_ADJUST_RATE = 3; // 出價每秒最多變動幾枚(搖桿全推到底時)
+const BID_TICK_MS = 100;
 
 export const controls = [
-  { icon: '🎚️', label: '拖曳滑桿決定出價（隊友與對手都看不到）' },
-  { icon: '🔒', label: '鎖定出價（鎖定前可以隨時調整）' },
+  { icon: '🕹️', label: '推上／推下調整出價（隊友與對手都看不到，其他資訊看大螢幕）' },
+  { icon: 'Ⓐ', label: '鎖定出價（鎖定前可以隨時調整）' },
 ];
 
-let _sendFn = null;
-let _locked = false;
-let _countdownTimer = null;
+let _joystick = null;
+let _cleanup = [];
+let _tickTimer = null;
 let _els = null;
+let _lockBtn = null;
+
+let _currentDy = 0;
+let _bidValue = 0;
+let _maxBid = 0;
+let _locked = false;
+let _lastSentValue = -1;
 
 export function mount(root, sendFn) {
-  _sendFn = sendFn;
+  _currentDy = 0;
+  _bidValue = 0;
+  _maxBid = 0;
   _locked = false;
+  _lastSentValue = -1;
 
   root.innerHTML = `
-    <div class="auction-panel">
-      <div class="auction-round" id="auction-round">第 1 / 5 輪</div>
-      <div class="auction-gift">
-        <span class="auction-gift-icon" id="auction-gift-icon">🎁</span>
-        <div class="auction-gift-text">
-          <div class="auction-gift-label" id="auction-gift-label">等待開拍…</div>
-          <div class="auction-gift-note" id="auction-gift-note"></div>
+    <div class="gamepad-layout">
+      <div class="gamepad-left"></div>
+      <div class="auction-hud" id="auction-hud">
+        <div class="auction-hud-label" id="auction-hud-label">等待開拍…</div>
+        <div class="auction-hud-value" id="auction-hud-value">0</div>
+        <div class="auction-hud-cap" id="auction-hud-cap"></div>
+      </div>
+      <div class="gamepad-right">
+        <div class="abxy-buttons">
+          <button class="abxy-btn btn-y inactive">Y</button>
+          <button class="abxy-btn btn-x inactive">X</button>
+          <button class="abxy-btn btn-b inactive">B</button>
+          <button class="abxy-btn btn-a inactive" data-action="lock">A</button>
         </div>
       </div>
-      <div class="auction-timer" id="auction-timer">⏱ --</div>
-      <div class="auction-bid-row">
-        <span>你的出價</span>
-        <span class="auction-bid-value" id="auction-bid-value">0</span>
-      </div>
-      <input type="range" class="auction-slider" id="auction-slider" min="0" max="0" value="0" disabled />
-      <button class="primary-btn auction-lock-btn" id="auction-lock-btn" disabled>🔒 鎖定出價</button>
-      <div class="hint auction-status" id="auction-status">等待本局開拍…</div>
     </div>
   `;
 
   _els = {
-    round:  root.querySelector('#auction-round'),
-    icon:   root.querySelector('#auction-gift-icon'),
-    label:  root.querySelector('#auction-gift-label'),
-    note:   root.querySelector('#auction-gift-note'),
-    timer:  root.querySelector('#auction-timer'),
-    value:  root.querySelector('#auction-bid-value'),
-    slider: root.querySelector('#auction-slider'),
-    lockBtn: root.querySelector('#auction-lock-btn'),
-    status: root.querySelector('#auction-status'),
+    label: root.querySelector('#auction-hud-label'),
+    value: root.querySelector('#auction-hud-value'),
+    cap:   root.querySelector('#auction-hud-cap'),
   };
 
-  _els.slider.addEventListener('input', () => {
-    _els.value.textContent = _els.slider.value;
-    _sendFn({ action: 'bid', value: Number(_els.slider.value) });
-  });
+  // 只用上下軸 — 左右軸鎖死,推的幅度(不是位移距離)決定出價變動的速度。
+  _joystick = createJoystick(
+    root.querySelector('.gamepad-layout'),
+    ({ dy }) => { _currentDy = dy ?? 0; },
+    { disabled: ['left', 'right'] },
+  );
 
-  _els.lockBtn.addEventListener('click', () => {
-    if (_locked) return;
+  // 用固定頻率的計時器持續累加,而不是只在 pointermove 觸發時累加 ——
+  // 手指推著搖桿不動時仍要持續加價,單純掛在 joystick 的 move callback 上
+  // 的話,沒有新的 pointermove 事件就會卡住不動。
+  _tickTimer = setInterval(() => {
+    if (_locked || _currentDy === 0 || _maxBid <= 0) return;
+    _bidValue = Math.max(0, Math.min(_maxBid, _bidValue - _currentDy * BID_ADJUST_RATE * (BID_TICK_MS / 1000)));
+    const rounded = Math.round(_bidValue);
+    _els.value.textContent = rounded;
+    if (rounded !== _lastSentValue) {
+      _lastSentValue = rounded;
+      sendFn({ action: 'bid', value: rounded });
+    }
+  }, BID_TICK_MS);
+
+  _lockBtn = root.querySelector('[data-action="lock"]');
+  const pressLock = (e) => {
+    e.preventDefault();
+    if (_locked || _maxBid <= 0) return;
     _locked = true;
-    _sendFn({ action: 'lock' });
-    _els.slider.disabled = true;
-    _els.lockBtn.disabled = true;
-    _els.status.textContent = '✓ 已鎖定，等待其他人…';
-  });
+    _lockBtn.classList.add('pressed', 'inactive');
+    sendFn({ action: 'lock' });
+    _els.label.textContent = '✓ 已鎖定';
+  };
+  _lockBtn.addEventListener('pointerdown', pressLock);
+  _cleanup.push(() => _lockBtn.removeEventListener('pointerdown', pressLock));
 }
 
 export function unmount() {
-  clearInterval(_countdownTimer);
-  _countdownTimer = null;
-  _sendFn = null;
+  clearInterval(_tickTimer);
+  _tickTimer = null;
+  _joystick?.destroy();
+  _joystick = null;
+  _cleanup.forEach(fn => fn());
+  _cleanup = [];
   _els = null;
+  _lockBtn = null;
 }
 
 // Called by controller/main.js for any screen->controller message it
 // doesn't already handle itself, so the layout can opt into its own types.
+// Round/gift/timer text intentionally isn't mirrored here — the shared
+// screen already shows all of it publicly (see the module comment).
 export function onMessage(data) {
   if (data.type !== 'auction_round' || !_els) return;
 
+  _currentDy = 0;
+  _bidValue = 0;
+  _maxBid = data.maxBid;
   _locked = false;
-  clearInterval(_countdownTimer);
+  _lastSentValue = -1;
 
-  const gift = GIFT_INFO[data.giftType] ?? GIFT_INFO.normal;
-  _els.round.textContent = `第 ${data.round} / 5 輪`;
-  _els.icon.textContent = gift.icon;
-  _els.label.textContent = gift.label;
-  _els.note.textContent = gift.note;
-
-  _els.slider.max = data.maxBid;
-  _els.slider.value = 0;
-  _els.slider.disabled = data.maxBid <= 0;
+  _els.label.textContent = data.maxBid > 0 ? '你的出價' : '沒有金幣可出價';
   _els.value.textContent = '0';
-  _els.lockBtn.disabled = data.maxBid <= 0;
-  _els.status.textContent = data.maxBid > 0 ? '拖曳滑桿決定出價，鎖定前可以隨時修改' : '你的隊伍沒有金幣可以出價了';
+  _els.cap.textContent = data.maxBid > 0 ? `上限 ${data.maxBid}` : '';
 
-  let remaining = Math.ceil(data.timeLeft);
-  _els.timer.textContent = `⏱ ${remaining}秒`;
-  _countdownTimer = setInterval(() => {
-    remaining -= 1;
-    _els.timer.textContent = `⏱ ${Math.max(0, remaining)}秒`;
-    if (remaining <= 0) clearInterval(_countdownTimer);
-  }, 1000);
+  _lockBtn?.classList.remove('pressed');
+  _lockBtn?.classList.toggle('inactive', data.maxBid <= 0);
 }

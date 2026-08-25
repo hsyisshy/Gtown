@@ -109,6 +109,13 @@ function enableRotatedTouchScroll(el) {
     lastX = e.clientX;
     lastY = e.clientY;
     dragged = 0;
+    // Without this, a swipe that drifts even slightly past the list's own
+    // edge (easy on a small phone list with more rows than fit on screen)
+    // stops delivering pointermove to `el` — the browser hands the pointer
+    // to whatever element is now underneath instead. The drag would just
+    // silently stop mid-scroll, making rows past that point unreachable
+    // without lifting and re-starting exactly inside the list every time.
+    el.setPointerCapture(e.pointerId);
   });
   el.addEventListener('pointermove', e => {
     if (e.pointerId !== activeId) return;
@@ -402,8 +409,13 @@ function refreshUI() {
 
   if (phase === PHASE.LOBBY) {
     showOnly(isMaster ? 'lobbyMaster' : 'lobbyPlayer');
-    if (isMaster) renderLobbyTeamInfo('lobby-master-team-badge', 'lobby-master-members', 'lobby-master-count');
-    else          renderLobbyTeamInfo('lobby-player-team-badge', 'lobby-player-members', 'lobby-player-count');
+    if (isMaster) {
+      // No team badge/members for the host — they never have a team.
+      const countEl = document.getElementById('lobby-master-count');
+      if (countEl) countEl.textContent = `${Object.keys(state.players).length} 位玩家已加入`;
+    } else {
+      renderLobbyTeamInfo('lobby-player-team-badge', 'lobby-player-members', 'lobby-player-count');
+    }
 
   } else if (phase === PHASE.GAME_SELECT) {
     if (isMaster) { renderGameSelectList(); showOnly('gameSelectMaster'); }

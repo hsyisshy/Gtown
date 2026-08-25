@@ -350,7 +350,7 @@ function finishMatch() {
     game._globalState.players[winnerId].score =
       (game._globalState.players[winnerId].score || 0) + game.scores[winner];
   }
-  game._endCb?.(winner);
+  game._endCb?.(winner, { label: '回合數', red: String(game.scores.red), blue: String(game.scores.blue) });
 }
 
 function updateRoundTransition(dt) {

@@ -45,15 +45,13 @@
   <!-- In-game back-to-game-select (host only, two-tap confirm) -->
   <button id="ingame-back-btn" class="hidden"> 重選遊戲</button>
 
-  <!-- LOBBY: master -->
+  <!-- LOBBY: master — the host never carries a team assignment (see
+       shared/teams.js), so there's no team badge / member list / switch-team
+       button here, unlike lobby-player below. -->
   <div id="lobby-master" class="hidden">
     <p class="role-tag">房主</p>
-    <div class="lobby-team-display">
-      <div id="lobby-master-team-badge" class="ctrl-team-badge"></div>
-      <div id="lobby-master-members" class="ctrl-member-list"></div>
-    </div>
+    <p class="hint">你負責主持，不會被分配到任何隊伍</p>
     <p id="lobby-master-count" class="hint"></p>
-    <button class="secondary-btn switch-team-btn">🔄 換隊伍</button>
     <button class="primary-btn" id="start-btn">START</button>
   </div>
 
@@ -64,7 +62,7 @@
       <div id="lobby-player-members" class="ctrl-member-list"></div>
     </div>
     <p id="lobby-player-count" class="hint"></p>
-    <button class="secondary-btn switch-team-btn">🔄 換隊伍</button>
+    <button class="secondary-btn switch-team-btn">換隊伍</button>
     <button class="secondary-btn" id="claim-host-btn">申請當房主</button>
     <p class="hint">等待房主開始遊戲…</p>
   </div>
@@ -103,13 +101,13 @@
   <!-- PREP: reveal + ready check -->
   <div id="prep-waiting" class="hidden">
     <div class="team-badge"></div>
-    <p class="hint">🎰 抽籤中…</p>
+    <p class="hint">抽籤中…</p>
   </div>
 
   <div id="prep-ready-pending" class="hidden">
     <div class="team-badge"></div>
     <p class="prep-drawn-text">你被抽中上場！</p>
-    <button class="primary-btn" id="prep-ready-btn">✅ 準備好了</button>
+    <button class="primary-btn" id="prep-ready-btn">準備好了</button>
   </div>
 
   <div id="prep-ready-done" class="hidden">
@@ -129,7 +127,7 @@
   <div id="prep-host-panel" class="hidden">
     <p class="role-tag">房主控制</p>
     <div id="prep-roster-list"></div>
-    <button class="primary-btn" id="prep-force-start-btn">⚡ 強制開始</button>
+    <button class="primary-btn" id="prep-force-start-btn">強制開始</button>
   </div>
 
   <!-- TUTORIAL: every playing device browses its own copy of the how-to-play
@@ -137,7 +135,7 @@
        #ingame-back-btn), layered on top of the normal game controls whose
        real A/B buttons flip pages while this is up (see src/controller/main.js). -->
   <div id="tutorial-reader" class="hidden">
-    <p class="tutorial-reader-title">📖 教學說明</p>
+    <p class="tutorial-reader-title">教學說明</p>
     <img id="tutorial-reader-img" alt="教學圖說" />
     <p id="tutorial-reader-counter"></p>
     <p id="tutorial-reader-hint" class="hint"></p>
@@ -146,7 +144,8 @@
   <!-- Shown instead of the reader once this device has flipped through to
        the end and reported ready, while others are still catching up. -->
   <div id="tutorial-waiting" class="hidden">
-    <p class="hint">✅ 看完了，等待其他人…</p>
+    <p class="hint">
+      看完了，等待其他人…</p>
   </div>
 
   <!-- PLAYING: layout injected dynamically (active players) -->
@@ -170,12 +169,12 @@
     <div id="team-badge-cheer" class="team-badge team-badge--small"></div>
     <p class="cheer-title">為隊友加油！</p>
     <div class="cheer-grid">
-      <button class="cheer-btn" data-emoji="👏">👏</button>
-      <button class="cheer-btn" data-emoji="🔥">🔥</button>
-      <button class="cheer-btn" data-emoji="⚡">⚡</button>
-      <button class="cheer-btn" data-emoji="💥">💥</button>
-      <button class="cheer-btn" data-emoji="🎉">🎉</button>
-      <button class="cheer-btn" data-emoji="❤️">❤️</button>
+      <button class="cheer-btn" data-emoji="fire"><img src="emoji/1.jpg" alt="🔥" /></button>
+      <button class="cheer-btn" data-emoji="like"><img src="emoji/2.jpg" alt="👍" /></button>
+      <button class="cheer-btn" data-emoji="cheer"><img src="emoji/3.jpg" alt="🙌" /></button>
+      <button class="cheer-btn" data-emoji="party"><img src="emoji/4.jpg" alt="🎉" /></button>
+      <button class="cheer-btn" data-emoji="star"><img src="emoji/5.jpg" alt="⭐" /></button>
+      <button class="cheer-btn" data-emoji="love"><img src="emoji/6.jpg" alt="❤️" /></button>
     </div>
     <div class="cheer-phrases">
       <button class="cheer-phrase-btn" data-text="加油！">加油！</button>
