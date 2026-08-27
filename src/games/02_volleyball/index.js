@@ -1,6 +1,6 @@
 import {
   NET_X, NET_W, GROUND_Y, PLAYER_H, PLAYER_W, BALL_R, WIN_SCORE, POINT_PAUSE,
-  JUMP_VELOCITY, LEFT_WALL, RIGHT_WALL,
+  JUMP_VELOCITY, JUMP_VELOCITY_BACK, LEFT_WALL, RIGHT_WALL,
 } from './constants.js';
 import { updatePhysics } from './physics.js';
 import { render } from './renderer.js';
@@ -40,6 +40,7 @@ function initPlayer(side, deviceId, teamColor, name, zone, slot) {
     onGround: true,
     animState: 'idle',
     input: { left: false, right: false },
+    moveDx: 0,
     hitPressedAt: null,
     hitCooldown: 0,
     hitTimer: 0,
@@ -81,12 +82,13 @@ export default {
   requireFullTeams: true,
   color: '#ffe066',
   emoji: '🏐',
-  cover: '02_volleyball/volleyball_cover.png',
+  cover: '02_volleyball/volleyball_cover.webp',
 
   tutorial: {
     pages: [
-      '02_volleyball/tutorial/1.png',
-      '02_volleyball/tutorial/2.png',
+      '02_volleyball/tutorial/1.webp',
+      '02_volleyball/tutorial/2.webp',
+      '02_volleyball/tutorial/3.webp',
     ],
   },
 
@@ -220,10 +222,13 @@ export default {
       case 'move':
         player.input.left  = (data.dx ?? 0) < -0.2;
         player.input.right = (data.dx ?? 0) > 0.2;
+        // Raw analog value (not the walk thresholds above) — used at spike
+        // time in physics.js to steer the shot's angle.
+        player.moveDx = Math.max(-1, Math.min(1, data.dx ?? 0));
         break;
       case 'a':
         if (player.onGround) {
-          player.vy = JUMP_VELOCITY;
+          player.vy = player.slot === 0 ? JUMP_VELOCITY_BACK : JUMP_VELOCITY;
           player.onGround = false;
           player.animState = 'jumping';
           SFX.jump();

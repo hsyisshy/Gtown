@@ -494,8 +494,12 @@ function refreshUI() {
 // (.abxy-btn.btn-a/.btn-b — every controller-layout renders these, active
 // or not). Delegated on document so it works no matter which game's layout
 // is mounted underneath. The game's own handler for these buttons (if any)
-// may also fire — harmless, since gameplay input is already dropped
-// screen-side while a tutorial is active. Reading position is purely local
+// may also fire — usually harmless, since gameplay input is already dropped
+// screen-side while a tutorial is active. The exception is a game whose A/B
+// handler has a purely-local UI side effect (a popup, not just a message to
+// the screen) — that kind needs its own `body.tutorial-controlling` guard,
+// see 07_painting-sticker/controller-layout.js's openConfirm() for why.
+// Reading position is purely local
 // (never synced) — only the "I finished" signal (MSG.TUTORIAL_READY) goes
 // to the screen, which then shows a ready-roster instead of one synced page.
 // ---------------------------------------------------------------------------

@@ -429,13 +429,13 @@ export default {
   playersPerTeam: 1,
   color: '#ff8d5c',
   emoji: '🎯',
-  cover: '05_furniture-stack/theme/furniture_cover.png',
+  cover: '05_furniture-stack/theme/furniture_cover.webp',
 
   tutorial: {
     pages: [
-      '05_furniture-stack/tutorial/1.png',
-      '05_furniture-stack/tutorial/2.png',
-      '05_furniture-stack/tutorial/3.png',
+      '05_furniture-stack/tutorial/1.webp',
+      '05_furniture-stack/tutorial/2.webp',
+      '05_furniture-stack/tutorial/3.webp',
     ],
   },
 

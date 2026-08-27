@@ -2,6 +2,7 @@ import {
   GROUND_Y, NET_X, NET_TOP, NET_W, LEFT_WALL, RIGHT_WALL,
   GRAVITY_BASE, PLAYER_GRAVITY, PLAYER_SPEED, BALL_R,
   PLAYER_W, PLAYER_H, HIT_RADIUS, HIT_WINDOW, HIT_COOLDOWN,
+  SPIKE_VX_BASE, SPIKE_VX_STEER, SPIKE_VY_BASE, SPIKE_VY_STEER, SPIKE_VY_MIN,
 } from './constants.js';
 import { SFX } from './audio.js';
 
@@ -166,8 +167,13 @@ function checkHits(vbState) {
         const dirMult = side === 'left' ? 1 : -1;
 
         if (isSpike) {
-          ball.vx = dirMult * 750 + p.vx * 0.25;
-          ball.vy = 320;
+          // Steer by joystick tilt relative to the spike's own forward
+          // direction: +1 = pushing toward the net (steep, hard kill close
+          // in), -1 = pulling back toward your own baseline (flatter, so
+          // the ball hangs longer and lands deep in the opponent's court).
+          const toward = dirMult * (p.moveDx ?? 0);
+          ball.vx = dirMult * (SPIKE_VX_BASE + toward * SPIKE_VX_STEER) + p.vx * 0.25;
+          ball.vy = Math.max(SPIKE_VY_MIN, SPIKE_VY_BASE + toward * SPIKE_VY_STEER);
           p.animState = 'spiking';
         } else {
           ball.vx = dirMult * 680 + p.vx * 0.4;

@@ -27,7 +27,6 @@ const state = {
   activeMaps: null,      // maps/modes currently on the picker (may carry .enabled)
   lastWinner: null,      // 'red' | 'blue' | null — for results display
   lastRoundScore: null,  // { label, red, blue } | null — the game's own final score, see endGame()
-  _prevTeamScores: null, // { red, blue } — teamScores snapshot from just before the latest increment, for the results count-up animation
   initialized: false,
   currentGame: null,
   tutorialActive: false, // how-to-play card is up — game updates/inputs hold
@@ -1071,6 +1070,7 @@ let _tutorialCountdownInterval = null;
 
 function renderTutorialPages(pages) {
   tutorialPagesEl.innerHTML = '';
+  tutorialPagesEl.style.setProperty('--tutorial-page-count', pages.length);
   pages.forEach((src, i) => {
     const img = document.createElement('img');
     img.className = 'tutorial-page';
@@ -1149,10 +1149,6 @@ function startTutorialReadyCountdown(seconds) {
 // pre-formatted as display strings since every game's unit is different.
 // Games that don't pass one just skip that line on the results screen.
 function endGame(winnerTeam, roundScore) {
-  // Captured before incrementing so renderResults() can animate the
-  // cumulative pill counting up from the old value to the new one.
-  state._prevTeamScores = { red: state.teamScores.red, blue: state.teamScores.blue };
-
   // Games report their winner explicitly; anything else counts as a draw
   if (winnerTeam === 'red' || winnerTeam === 'blue') {
     state.teamScores[winnerTeam]++;
@@ -1580,11 +1576,18 @@ function renderMapSelect() {
 function renderResults() {
   const w = state.lastWinner;
   const roundScore = state.lastRoundScore; // { label, red, blue } | null
-  const prev = state._prevTeamScores ?? state.teamScores;
 
   const winnerClass = w === 'red' ? 'red' : w === 'blue' ? 'blue' : 'tie';
-  const winnerText = w ? `${w === 'red' ? '🔴 紅隊' : '🔵 藍隊'} 獲勝！` : '平手！';
+  // English poster wording — reads as a big title banner (near-full-width,
+  // same treatment as the READY ROOM/RESULTS headers) instead of a
+  // sentence, so it needs to work as short punchy words, not a translated
+  // Chinese sentence.
+  const winnerText = w === 'red' ? 'RED TEAM WINS!' : w === 'blue' ? 'BLUE TEAM WINS!' : 'DRAW!';
 
+  // Cumulative match tally isn't shown here anymore — the flow always
+  // returns to game select next, which already has its own running score
+  // pill (see renderGameSelect()), so repeating it on this screen was
+  // redundant.
   scoreboardEl.innerHTML = `
     <div class="winner-announce ${winnerClass}">${winnerText}</div>
     ${roundScore ? `
@@ -1595,28 +1598,9 @@ function renderResults() {
         <span class="round-score-blue">${roundScore.blue}</span>
       </div>
     ` : ''}
-    <div class="cum-total-label">總比分</div>
-    <div class="cumulative-scores">
-      <div class="cum-score red">🔴 <span class="cum-num" id="cum-num-red">${prev.red}</span></div>
-      <div class="cum-divider">VS</div>
-      <div class="cum-score blue"><span class="cum-num" id="cum-num-blue">${prev.blue}</span> 🔵</div>
-    </div>
   `;
 
   resultsHintEl.textContent = '房主：繼續遊戲或回到大廳';
-
-  // Let the winner announcement land first, then bump the cumulative pill
-  // from the old value up to the new one — "advances by one point" instead
-  // of just snapping straight to the incremented number.
-  if (w === 'red' || w === 'blue') {
-    const numEl = document.getElementById(`cum-num-${w}`);
-    const target = state.teamScores[w];
-    setTimeout(() => {
-      if (!numEl) return;
-      numEl.textContent = target;
-      numEl.classList.add('cum-num-bump');
-    }, 700);
-  }
 }
 
 // ---------------------------------------------------------------------------

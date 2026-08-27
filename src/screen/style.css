@@ -112,7 +112,7 @@ body {
 }
 
 /* ── LOBBY ──
-   lobby_bd.png bakes the title + village art into the top ~half; the
+   lobby_bd.webp bakes the title + village art into the top ~half; the
    open plaza in the lower half is where the team rosters belong. */
 #view-lobby {
   position: absolute;
@@ -129,7 +129,7 @@ body {
      clip the last row. There's a lot of empty plaza art between the baked-in
      title and where content used to start, so there's room to spare. */
   padding: clamp(200px, 36svh, 480px) 32px 4svh;
-  background-image: url(/lobby_bd.png);
+  background-image: url(/lobby_bd.webp);
   background-size: cover;
   background-position: center top;
   background-repeat: no-repeat;
@@ -283,7 +283,7 @@ body {
 }
 
 /* ── GAME SELECT ──
-   Same village square as the lobby (empaty_bg.png = lobby_bd.png minus
+   Same village square as the lobby (empaty_bg.webp = lobby_bd.webp minus
    the baked-in title), so picking a game still feels like standing in
    the plaza — cards read as shop signboards, not sci-fi tiles. */
 #view-game-select {
@@ -297,14 +297,15 @@ body {
   text-align: center;
   width: 100%;
   padding: 6svh 32px;
-  background-image: url(/empaty_bg.png);
+  background-image: url(/empaty_bg.webp);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
 }
 
 #view-game-select h2,
-#view-prep h2 {
+#view-prep h2,
+#view-results h2 {
   font-size: clamp(2.4rem, 7vw, 5rem);
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -514,7 +515,7 @@ body {
   text-align: center;
   width: 100%;
   padding: 6svh 32px;
-  background-image: url(/empaty_bg.png);
+  background-image: url(/empaty_bg.webp);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -604,7 +605,7 @@ body {
   text-align: center;
   width: 100%;
   padding: 5svh 32px;
-  background-image: url(/empaty_bg.png);
+  background-image: url(/empaty_bg.webp);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -820,58 +821,76 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  /* svh-relative, not a flat px — the winner text + round score below now
+     run much bigger (near-full-width), so on a smaller/shorter screen
+     (this whole view sits in a body with overflow:hidden, no scroll
+     fallback) a fixed gap ate into the budget disproportionately and
+     clipped the hint text at the bottom. */
+  gap: clamp(8px, 2.6svh, 28px);
   text-align: center;
   width: 100%;
-  padding: 6svh 32px;
-  background-image: url(/empaty_bg.png);
+  padding: clamp(2svh, 6svh, 6svh) 32px;
+  background-image: url(/empaty_bg.webp);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-}
-
-#view-results h2 {
-  font-size: clamp(2rem, 6vw, 4.6rem);
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  background: linear-gradient(180deg, #fff0a0 0%, #ff8800 50%, #ff2200 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  -webkit-text-stroke: clamp(2px, 0.3vw, 4px) #3a1d08;
-  paint-order: stroke fill;
-  filter: drop-shadow(0 5px 0 rgba(100, 10, 0, 0.9)) drop-shadow(0 0 36px rgba(255, 120, 0, 0.6));
-  animation: title-pulse 2s ease-in-out infinite;
-}
-
-@keyframes title-pulse {
-  0%, 100% { filter: drop-shadow(0 5px 0 rgba(100,10,0,0.9)) drop-shadow(0 0 36px rgba(255,120,0,0.6)); }
-  50%       { filter: drop-shadow(0 5px 0 rgba(100,10,0,0.9)) drop-shadow(0 0 60px rgba(255,180,0,0.9)); }
 }
 
 #results-scoreboard {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: clamp(4px, 1.6svh, 16px);
 }
 
 /* Biggest element on the results screen — which color just won THIS
-   round, colored to match. The cumulative match tally used to hold this
-   spot; it's demoted to a small pill below (see .cumulative-scores). */
+   round. Painted-sign gradient-fill text with an ink stroke, same
+   village-plaque language as #view-results h2 and the .cum-score pills
+   (gradient bands: pale tint at top → team color mid → dark shade at
+   bottom), just tinted red/blue/gold instead of gold-only — was a flat
+   solid color + neon glow, which was the only text on this screen not
+   built out of that painted language. */
 .winner-announce {
-  font-size: clamp(2.6rem, 7vw, 5.2rem);
+  /* English poster title, sized to fill the screen the same way
+     READY ROOM / CHOOSE A GAME's headers do — heavy vw weighting so
+     "RED/BLUE TEAM WINS!" spans nearly the full width. min(vw, svh) caps
+     it on a short-but-wide screen too — #view-results sits in a body
+     with overflow:hidden and no scroll fallback, so an untamed vw-only
+     size can grow tall enough to push the round score / hint below it
+     off the bottom on a smaller display. */
+  font-size: clamp(3rem, min(11vw, 19svh), 8rem);
   font-weight: 900;
-  letter-spacing: 0.08em;
-  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.22), 0 0 34px currentColor;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  -webkit-text-stroke: clamp(2px, 0.3vw, 4px) #2b2015;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 5px 0 rgba(43, 32, 21, 0.5));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   animation: winner-announce-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
-.winner-announce.red  { color: #e8543f; }
-.winner-announce.blue { color: #4a7fc4; }
+/* background-image (longhand), not background — the shorthand resets
+   background-clip back to border-box on any property it doesn't
+   mention, which silently clobbered the text-clip above. */
+.winner-announce.red  { background-image: linear-gradient(180deg, #ffb8a8 0%, #e8543f 55%, #a8291a 100%); }
+.winner-announce.blue { background-image: linear-gradient(180deg, #a8d0f5 0%, #4a7fc4 55%, #305f9e 100%); }
 .winner-announce.tie  {
-  color: #a0670a;
-  font-size: clamp(2.2rem, 5.8vw, 4.2rem);
-  text-shadow: 0 4px 0 rgba(0, 0, 0, 0.18);
+  /* Only 5 letters, so the same font-size as RED/BLUE TEAM WINS! would
+     look tiny in isolation — sized up a tier to occupy comparable width
+     instead of matching point-size. */
+  font-size: clamp(4rem, min(15vw, 26svh), 11rem);
+  /* Darker/more saturated than red/blue's pale-top band needs — a light
+     gold top on a tie washed out to near-invisible against the cream
+     plaza background, since there's no team-color glow filling in the
+     contrast the way there is for red/blue. */
+  background-image: linear-gradient(180deg, #f0be5a 0%, #c9840f 55%, #7a4a05 100%);
+  /* The unrelated pre-existing .tie class (team-result plaques further
+     down this file) sets a 4-direction cream text-shadow. Since THIS
+     element's fill is transparent (background-clip:text), that shadow
+     paints underneath and shows straight through the glyph interior,
+     drowning out the gradient — cancel it out here. */
+  text-shadow: none;
 }
 
 @keyframes winner-announce-pop {
@@ -886,38 +905,53 @@ body {
 .round-score {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: clamp(10px, 2vw, 22px);
   font-weight: 900;
+  max-width: 90vw;
 }
 .round-score-label {
-  font-size: clamp(0.85rem, 1.7vw, 1.1rem);
+  font-size: clamp(1.1rem, 2.6vw, 1.8rem);
   font-weight: 700;
   color: #4a2f18;
   letter-spacing: 0.1em;
   margin-right: 6px;
+  /* Without these, the flex row (label + now much bigger red/sep/blue
+     spans) squeezed the label first — CJK text wraps between any two
+     characters by default, so it collapsed into a vertical single-char
+     column instead of shrinking the numbers next to it. */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
+/* Same painted gradient-text treatment as .winner-announce, just a size
+   tier down (this is the round's own score, not the headline) — was flat
+   solid color, which read as a different, older style next to the
+   repainted winner text above it. Sized to occupy ~80% of the screen
+   width (the row as a whole — label + red + sep + blue together). */
 .round-score-red, .round-score-blue {
-  font-size: clamp(1.8rem, 4.4vw, 3rem);
+  /* min(vw, svh) — same short-screen safeguard as .winner-announce above. */
+  font-size: clamp(3.4rem, min(13vw, 22svh), 9rem);
+  font-weight: 900;
+  -webkit-text-stroke: clamp(1.5px, 0.24vw, 3px) #2b2015;
+  paint-order: stroke fill;
+  filter: drop-shadow(0 4px 0 rgba(43, 32, 21, 0.5));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
-.round-score-red  { color: #e8543f; }
-.round-score-blue { color: #4a7fc4; }
+/* background-image, not background — see .winner-announce's comment on
+   why the shorthand can't be used here without losing the text clip. */
+.round-score-red  { background-image: linear-gradient(180deg, #ffb8a8 0%, #e8543f 55%, #a8291a 100%); }
+.round-score-blue { background-image: linear-gradient(180deg, #a8d0f5 0%, #4a7fc4 55%, #305f9e 100%); }
 .round-score-sep {
-  font-size: clamp(1.2rem, 2.6vw, 1.8rem);
+  font-size: clamp(2.4rem, 8vw, 5.6rem);
+  font-weight: 900;
   color: #4a2f18;
 }
 
-.cum-total-label {
-  font-size: clamp(0.7rem, 1.4vw, 0.9rem);
-  font-weight: 700;
-  color: rgba(74, 47, 24, 0.6);
-  letter-spacing: 0.15em;
-  margin-top: 6px;
-}
-
 /* Pills reuse the lobby's team-col-header language (painted gradient,
-   dark ink border, cream text) instead of glowing neon numbers. Shrunk
-   from clamp(2rem, 5.5vw, 3.6rem) — the cumulative match tally is now
-   secondary to .winner-announce / .round-score above it. */
+   dark ink border, cream text) instead of glowing neon numbers. Only
+   shown on game-select now — the results screen dropped its own copy of
+   the cumulative tally since game-select already has this right after. */
 .cumulative-scores {
   display: flex;
   align-items: center;
@@ -925,19 +959,6 @@ body {
   font-size: clamp(1.1rem, 2.6vw, 1.7rem);
   font-weight: 900;
   letter-spacing: 0.06em;
-}
-
-/* One-shot pop when the cumulative pill advances by a point (see
-   renderResults()'s setTimeout) — not an infinite loop, just a beat to
-   mark the number actually changing instead of silently snapping. */
-@keyframes cum-num-bump {
-  0%   { transform: scale(1); }
-  45%  { transform: scale(1.55); }
-  100% { transform: scale(1); }
-}
-.cum-num-bump {
-  display: inline-block;
-  animation: cum-num-bump 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .cum-score {
@@ -1013,9 +1034,12 @@ body {
     -1px  1px 0 #fff6dd, 1px  1px 0 #fff6dd;
 }
 
+/* Was easy to miss from across the room at 0.8-1.15rem — this is the
+   only instruction telling the host what to do next, so it needs to read
+   at a glance, not just be legible up close. */
 #results-hint {
-  font-size: clamp(0.8rem, 1.8vw, 1.15rem);
-  font-weight: 700;
+  font-size: clamp(1.5rem, 3.4vw, 2.4rem);
+  font-weight: 900;
   color: #4a2f18;
   letter-spacing: 0.1em;
   text-shadow:
@@ -1226,17 +1250,22 @@ body {
   color: rgba(74, 47, 24, 0.8);
 }
 
+/* Grid (not flex-wrap) so the row count always matches --tutorial-page-count
+   (set by renderTutorialPages() in main.js) — columns shrink to fit exactly
+   one row no matter how many pages a game has, instead of flex-wrap forcing
+   an uneven 3+1 wrap once a 4th page pushed past the row width. */
 #tutorial-pages {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(var(--tutorial-page-count, 3), minmax(0, 1fr));
+  justify-items: center;
   gap: clamp(10px, 1.6vw, 20px);
   margin: 0 0 clamp(14px, 2.4vh, 22px);
 }
 
 .tutorial-page {
   display: block;
-  width: clamp(130px, 15vw, 230px);
+  width: 100%;
+  max-width: clamp(170px, 20vw, 320px);
   aspect-ratio: 1 / 1;
   object-fit: cover;
   border-radius: 12px;
@@ -1244,11 +1273,41 @@ body {
   box-shadow: 0 4px 0 rgba(43, 32, 21, 0.35);
 }
 
+/* Roster only needs to answer "who's still reading" while the picture-book
+   pages above do the heavy lifting, so it gets a scaled-down version of the
+   shared .prep-roster-* look (not edited directly — that's also the pre-match
+   ready screen, which still wants full size). */
 #tutorial-roster {
   display: flex;
-  gap: clamp(16px, 3vw, 32px);
+  gap: clamp(10px, 2vw, 20px);
   width: 100%;
   justify-content: center;
+}
+
+#tutorial-roster .prep-roster-team-box {
+  padding: clamp(8px, 1.2vh, 14px) 12px;
+  gap: 6px;
+  border-width: clamp(2px, 0.3vw, 3px);
+}
+
+#tutorial-roster .prep-roster-team-header {
+  font-size: clamp(0.8rem, 1.5vw, 1.1rem);
+}
+
+#tutorial-roster .prep-roster-list {
+  gap: 5px;
+}
+
+#tutorial-roster .prep-roster-member {
+  padding: 5px 10px;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: clamp(0.7rem, 1.2vw, 0.95rem);
+}
+
+#tutorial-roster .prep-roster-empty {
+  font-size: clamp(0.7rem, 1.1vw, 0.9rem);
+  padding: 4px 0;
 }
 
 #tutorial-roster-countdown {

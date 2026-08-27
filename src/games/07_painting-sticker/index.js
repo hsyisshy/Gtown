@@ -8,12 +8,14 @@
  * source painting, hidden until the reveal at the end (matches the
  * original's "don't peek at your score mid-match" design).
  *
- * Early finish requires BOTH teammates to press A — pressing toggles that
- * player's own "ready to submit" flag (press again to cancel), and the
- * team locks in only once both flags are set. Ported from the original
- * prototype's own 2-player co-op mode (game.js's readyToFinishByPlayer),
- * which already solved exactly this "don't let one player submit for a
- * teammate who isn't done" problem.
+ * Early finish requires BOTH teammates to press A — the controller shows a
+ * confirm popup first (src/games/07_painting-sticker/controller-layout.js),
+ * and only sends 'finish' once the player taps through it, so it's a
+ * one-way "已送出" lock, not a toggle. The team locks in only once both
+ * players have confirmed. Ported from the original prototype's own
+ * 2-player co-op mode (game.js's readyToFinishByPlayer), which already
+ * solved exactly this "don't let one player submit for a teammate who
+ * isn't done" problem — the confirm-then-lock step is new for the hub.
  *
  * The original's AI opponent, random "干擾" events, and its standalone
  * WebSocket coop room are dropped — the hub already provides real opponents
@@ -41,10 +43,6 @@ import { bgm, SFX } from './audio.js';
 const TEAM_MAIN = { red: '#C4694A', blue: '#4A7C82' };
 const TEAM_DIM  = { red: '#8B4A34', blue: '#33565A' };
 const TEAM_LABEL = { red: '紅隊', blue: '藍隊' };
-// Matches the phone controller's --btn-color for .btn-a/.btn-b (src/controller/style.css)
-// so an on-screen "按 A/B" hint reads as the same color as the physical button.
-const BTN_A_COLOR = '#e9908f';
-const BTN_B_COLOR = '#f4d879';
 const ITEM_BOX = { x: MID_X, y: ITEMS_Y, w: MID_W, h: ITEMS_H };
 
 // ---- 牛皮紙拼貼美術主題 — ported from root game.js (the original single-device
@@ -89,9 +87,17 @@ function loadImage(src) {
 async function loadPaintingAndPieces() {
   const manifest = await (await fetch('07_painting-sticker/paintings/manifest.json')).json();
   const paintingId = manifest[Math.floor(Math.random() * manifest.length)];
-  const rawImage = await loadImage(`07_painting-sticker/paintings/${paintingId}/raw.png`);
+  const rawImage = await loadImage(`07_painting-sticker/paintings/${paintingId}/raw.webp`);
   const seed = Math.floor(Math.random() * 2147483647);
   const grid = computeGridForCount(PIECES_PER_TEAM);
+  // computeGridForCount only picks the cols/rows pair closest to a square
+  // grid — it has no idea which axis is the painting's long one, so a
+  // non-square piece count (e.g. 15 -> 3x5) can come back oriented sideways
+  // relative to the source image. Every painting here ships landscape, so
+  // orient cols/rows to match rather than risk long, thin pieces.
+  const imageIsLandscape = rawImage.naturalWidth >= rawImage.naturalHeight;
+  const gridIsLandscape  = grid.cols >= grid.rows;
+  if (imageIsLandscape !== gridIsLandscape) [grid.cols, grid.rows] = [grid.rows, grid.cols];
   const config = { ...TEAR_CONFIG, cols: grid.cols, rows: grid.rows, randomSeed: seed };
 
   const result = generatePieces(rawImage, config, seed);
@@ -395,12 +401,15 @@ function finishTeamEarly(assets, team, remainingSeconds) {
   team.finishBonus = bonus;
 }
 
-// A pressing A toggles their OWN "ready to submit" flag (press again to
-// cancel) — the team only actually locks in once BOTH teammates have it
-// set, so one player can't submit early out from under the other.
-function toggleFinishReady(assets, team, player, remainingSeconds) {
-  if (team.finished) return;
-  player.readyToFinish = !player.readyToFinish;
+// A's controller now gates the press behind its own "確定要交卷嗎？" popup
+// (src/games/07_painting-sticker/controller-layout.js) — by the time this
+// fires, the player already confirmed, so it's a one-way lock-in, not a
+// toggle. The team only actually finishes once BOTH teammates have
+// confirmed, so one player still can't submit early out from under the
+// other; `player.readyToFinish` just can no longer flip back off.
+function confirmFinishReady(assets, team, player, remainingSeconds) {
+  if (team.finished || player.readyToFinish) return;
+  player.readyToFinish = true;
   SFX.grab();
   if (team.players.every((p) => p.readyToFinish)) {
     finishTeamEarly(assets, team, remainingSeconds);
@@ -652,28 +661,6 @@ function drawTeamPanel(ctx, assets, team, reveal) {
   ctx.restore();
   drawTapeCorner(ctx, canvasArea.x + canvasArea.w - 24, canvasArea.y, main, 0.12);
 
-  // Cursor / carried piece — one per team member, tinted main vs dim so
-  // which cursor belongs to whom reads at a glance without a name tag
-  // following it around.
-  for (const player of team.players) {
-    const cursorColor = player.slot === 0 ? main : TEAM_DIM[team.key];
-    if (player.carrying) {
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(
-        assets.pieceImages[player.carrying.id],
-        player.cursor.x - (assets.pieceW * scale) / 2,
-        player.cursor.y - (assets.pieceH * scale) / 2,
-        assets.pieceW * scale,
-        assets.pieceH * scale,
-      );
-      ctx.globalAlpha = 1;
-    }
-    ctx.strokeStyle = player.carrying ? CREAM : cursorColor;
-    ctx.lineWidth = 3;
-    ctx.strokeRect(player.cursor.x - CURSOR_SIZE / 2, player.cursor.y - CURSOR_SIZE / 2, CURSOR_SIZE, CURSOR_SIZE);
-    ctx.lineWidth = 1;
-  }
-
   // 偷窺道具效果：畫布疊一層原畫殘影
   if (team.peekTimer > 0) {
     ctx.save();
@@ -706,6 +693,56 @@ function drawTeamPanel(ctx, assets, team, reveal) {
   }
 }
 
+// Cursors (+ carried piece, + name tag) — drawn as its own pass, AFTER both
+// teams' panels and the middle strip (preview/items/score), not inside
+// drawTeamPanel. Cursors can wander into the middle strip to race for a
+// shared item (see moveCursor()'s bounds comment), and drawTeamPanel runs
+// before the middle-strip panels — drawing cursors there meant a cursor
+// sitting over the middle strip got painted over by the item/score panel
+// backgrounds a frame later, even though hit-testing (tryClaimItem) never
+// cared about draw order and kept working. Drawing cursors last guarantees
+// they're always on top regardless of where they are.
+function drawCursors(ctx, assets, teams) {
+  for (const team of [teams.red, teams.blue]) {
+    const main = TEAM_MAIN[team.key];
+    const { scale } = team.canvasFit;
+    for (const player of team.players) {
+      const cursorColor = player.slot === 0 ? main : TEAM_DIM[team.key];
+      if (player.carrying) {
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(
+          assets.pieceImages[player.carrying.id],
+          player.cursor.x - (assets.pieceW * scale) / 2,
+          player.cursor.y - (assets.pieceH * scale) / 2,
+          assets.pieceW * scale,
+          assets.pieceH * scale,
+        );
+        ctx.globalAlpha = 1;
+      }
+      ctx.strokeStyle = player.carrying ? CREAM : cursorColor;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(player.cursor.x - CURSOR_SIZE / 2, player.cursor.y - CURSOR_SIZE / 2, CURSOR_SIZE, CURSOR_SIZE);
+      ctx.lineWidth = 1;
+
+      // Name tag — same "dark chip, team-tinted text" treatment as
+      // volleyball's drawNameplate, so a player can tell which square is
+      // theirs at a glance instead of having to remember slot 0 vs 1's tint.
+      if (player.name) {
+        const tagY = player.cursor.y - CURSOR_SIZE / 2 - 8;
+        ctx.font = `700 13px ${FONT_BODY}`;
+        ctx.textAlign = 'center';
+        const textW = ctx.measureText(player.name).width;
+        const padX = 6;
+        ctx.fillStyle = 'rgba(20, 15, 10, 0.7)';
+        ctx.fillRect(player.cursor.x - textW / 2 - padX, tagY - 13, textW + padX * 2, 18);
+        ctx.fillStyle = cursorColor;
+        ctx.fillText(player.name, player.cursor.x, tagY);
+        ctx.textAlign = 'left';
+      }
+    }
+  }
+}
+
 function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   let line = '', curY = y;
   for (const ch of text) {
@@ -719,29 +756,6 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     }
   }
   if (line) ctx.fillText(line, x, curY);
-}
-
-// Draws a single-line, center-aligned hint with one substring (a button
-// letter) recolored to match that button's physical color on the phone
-// controller — e.g. "...按 A 提早完成" renders its "A" in BTN_A_COLOR so the
-// on-screen instruction visually matches the button players actually press.
-// Assumes ctx.textAlign === 'center' going in, and restores it after.
-function drawHintWithButtonColor(ctx, text, letter, letterColor, baseColor, cx, y) {
-  const idx = text.indexOf(letter);
-  if (idx < 0) { ctx.fillStyle = baseColor; ctx.fillText(text, cx, y); return; }
-  const before = text.slice(0, idx);
-  const after = text.slice(idx + letter.length);
-  let x = cx - ctx.measureText(text).width / 2;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = baseColor;
-  ctx.fillText(before, x, y);
-  x += ctx.measureText(before).width;
-  ctx.fillStyle = letterColor;
-  ctx.fillText(letter, x, y);
-  x += ctx.measureText(letter).width;
-  ctx.fillStyle = baseColor;
-  ctx.fillText(after, x, y);
-  ctx.textAlign = 'center';
 }
 
 function drawPreviewPanel(ctx, assets) {
@@ -824,24 +838,34 @@ function drawItemsPanel(ctx, activeItem) {
   });
 }
 
-function drawScorePanel(ctx, teams, reveal, timeRemaining, holdSecondsLeft, confetti, endedElapsedMs) {
+function drawScorePanel(ctx, teams, reveal, holdSecondsLeft, confetti, endedElapsedMs) {
   const area = { x: MID_X, y: SCORE_Y, w: MID_W, h: SCORE_H };
   drawPaperPanel(ctx, area.x, area.y, area.w, area.h, 904, getPaperPattern(ctx));
 
+  if (!reveal) {
+    // Mid-match this panel shows exactly one thing: how many of each
+    // team's two players have locked in their submission. Similarity is
+    // hidden until reveal anyway (nothing to show but "?"), and the
+    // placed-piece count / control-hint text were just competing with the
+    // one number spectators actually care about here.
+    drawSubmitStatus(ctx, area, teams);
+    return;
+  }
+
   ctx.fillStyle = INK;
   ctx.font = `700 15px ${FONT_BODY}`;
-  ctx.fillText(reveal ? '相似度' : '相似度（時間到才公布）', area.x + 10, area.y + 26);
+  ctx.fillText('相似度', area.x + 10, area.y + 26);
 
   ctx.textAlign = 'center';
   ctx.font = `700 30px ${FONT_DISPLAY}`;
   ctx.fillStyle = TEAM_MAIN.red;
-  ctx.fillText(reveal ? `${teams.red.score.toFixed(0)}%` : '？', area.x + area.w * 0.28, area.y + 70);
+  ctx.fillText(`${teams.red.score.toFixed(0)}%`, area.x + area.w * 0.28, area.y + 70);
   ctx.font = `700 15px ${FONT_DISPLAY}`;
   ctx.fillStyle = 'rgba(51,48,42,0.55)';
   ctx.fillText('VS', area.x + area.w * 0.5, area.y + 64);
   ctx.font = `700 30px ${FONT_DISPLAY}`;
   ctx.fillStyle = TEAM_MAIN.blue;
-  ctx.fillText(reveal ? `${teams.blue.score.toFixed(0)}%` : '？', area.x + area.w * 0.72, area.y + 70);
+  ctx.fillText(`${teams.blue.score.toFixed(0)}%`, area.x + area.w * 0.72, area.y + 70);
 
   ctx.font = `13px ${FONT_BODY}`;
   ctx.fillStyle = 'rgba(51,48,42,0.65)';
@@ -852,39 +876,53 @@ function drawScorePanel(ctx, teams, reveal, timeRemaining, holdSecondsLeft, conf
   ctx.fillStyle = TEAM_MAIN.blue;
   ctx.fillText(`${teams.blue.placedPieces.length} / ${PIECES_PER_TEAM}`, area.x + area.w * 0.72, area.y + 122);
 
-  if (reveal) {
-    const winnerText = teams.red.score === teams.blue.score
-      ? '平手！'
-      : teams.red.score > teams.blue.score ? '🏆 紅隊獲勝！' : '🏆 藍隊獲勝！';
-    drawConfetti(ctx, confetti, endedElapsedMs ?? 0);
-    drawWinnerBanner(ctx, area.x + area.w / 2, area.y + 155, winnerText, endedElapsedMs ?? 0);
-    if (holdSecondsLeft != null) {
-      ctx.font = `13px ${FONT_BODY}`;
-      ctx.fillStyle = 'rgba(51,48,42,0.65)';
-      ctx.fillText(`${Math.ceil(holdSecondsLeft)} 秒後返回大廳`, area.x + area.w / 2, area.y + 196);
-    }
-  } else {
+  const winnerText = teams.red.score === teams.blue.score
+    ? '平手！'
+    : teams.red.score > teams.blue.score ? '🏆 紅隊獲勝！' : '🏆 藍隊獲勝！';
+  drawConfetti(ctx, confetti, endedElapsedMs ?? 0);
+  drawWinnerBanner(ctx, area.x + area.w / 2, area.y + 155, winnerText, endedElapsedMs ?? 0);
+  if (holdSecondsLeft != null) {
     ctx.font = `13px ${FONT_BODY}`;
-    drawHintWithButtonColor(ctx, '搖桿移動游標／B 抓取或放下碎片', 'B', BTN_B_COLOR, 'rgba(51,48,42,0.7)', area.x + area.w / 2, area.y + 158);
-
-    ['red', 'blue'].forEach((key, i) => {
-      const team = teams[key];
-      const y = area.y + 200 + i * 22;
-      ctx.font = `700 13px ${FONT_BODY}`;
-      if (team.finished) {
-        ctx.fillStyle = TEAM_DIM.blue;
-        wrapText(ctx, `${TEAM_LABEL[key]}已提早完成（+${team.finishBonus.toFixed(1)}%），等待結算`, area.x + area.w / 2, y, area.w - 24, 16);
-      } else {
-        // Both teammates must press A — one player's press only flags
-        // themselves ready, so the hint shows how many of the two are in.
-        const readyCount = team.players.filter((p) => p.readyToFinish).length;
-        const text = readyCount > 0
-          ? `${TEAM_LABEL[key]} ${readyCount}/2 已按 A 準備交卷（兩人都按才鎖定）`
-          : `${TEAM_LABEL[key]}按 A 提早交卷：+${computeEarlyFinishBonus(timeRemaining).toFixed(1)}% 加成`;
-        drawHintWithButtonColor(ctx, text, 'A', BTN_A_COLOR, 'rgba(51,48,42,0.65)', area.x + area.w / 2, y);
-      }
-    });
+    ctx.fillStyle = 'rgba(51,48,42,0.65)';
+    ctx.fillText(`${Math.ceil(holdSecondsLeft)} 秒後返回大廳`, area.x + area.w / 2, area.y + 196);
   }
+  ctx.textAlign = 'left';
+}
+
+// Two big stacked rows (one per team), sized to fill nearly the whole
+// panel — this is the ONLY thing the mid-match score panel shows now.
+// A team that already locked in early (both players confirmed) just
+// displays as a steady 2/2 instead of a separate "finished" message,
+// since that's still exactly "how many have submitted".
+function drawSubmitStatus(ctx, area, teams) {
+  const rowH = area.h / 2;
+  ctx.textAlign = 'center';
+  ['red', 'blue'].forEach((key, i) => {
+    const team = teams[key];
+    const rowY = area.y + i * rowH;
+    const cy = rowY + rowH / 2;
+    const count = team.finished ? 2 : team.players.filter((p) => p.readyToFinish).length;
+
+    ctx.fillStyle = TEAM_MAIN[key];
+    ctx.font = `700 26px ${FONT_DISPLAY}`;
+    ctx.fillText(`${key === 'red' ? '🔴' : '🔵'} ${TEAM_LABEL[key]}`, area.x + area.w / 2, cy - 46);
+
+    ctx.font = `700 58px ${FONT_DISPLAY}`;
+    ctx.fillText(`${count}/2`, area.x + area.w / 2, cy + 18);
+
+    ctx.font = `700 20px ${FONT_BODY}`;
+    ctx.fillStyle = 'rgba(51,48,42,0.7)';
+    ctx.fillText('已送出', area.x + area.w / 2, cy + 54);
+
+    if (i === 0) {
+      ctx.strokeStyle = 'rgba(51,48,42,0.2)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(area.x + 24, rowY + rowH);
+      ctx.lineTo(area.x + area.w - 24, rowY + rowH);
+      ctx.stroke();
+    }
+  });
   ctx.textAlign = 'left';
 }
 
@@ -968,14 +1006,14 @@ export default {
   requireFullTeams: true,
   color: '#d9895a',
   emoji: '🖼️',
-  cover: '07_painting-sticker/painting_cover.png',
+  cover: '07_painting-sticker/painting_cover.webp',
 
   tutorial: {
     pages: [
-      '07_painting-sticker/tutorial/1.png',
-      '07_painting-sticker/tutorial/2.png',
-      '07_painting-sticker/tutorial/3.png',
-      '07_painting-sticker/tutorial/4.png',
+      '07_painting-sticker/tutorial/1.webp',
+      '07_painting-sticker/tutorial/2.webp',
+      '07_painting-sticker/tutorial/3.webp',
+      '07_painting-sticker/tutorial/4.webp',
     ],
   },
 
@@ -1092,10 +1130,11 @@ export default {
     drawPreviewPanel(ctx, pg.assets);
     drawItemsPanel(ctx, pg.activeItem);
     drawScorePanel(
-      ctx, pg.teams, reveal, pg.timeRemaining,
+      ctx, pg.teams, reveal,
       reveal ? pg.holdSecondsLeft : null,
       pg.confetti, pg.endedElapsed * 1000,
     );
+    drawCursors(ctx, pg.assets, pg.teams);
 
     ctx.restore();
   },
@@ -1118,7 +1157,7 @@ export default {
       handleAction(pg.assets, team, player);
       tryClaimItem(team, player);
     } else if (data.action === 'finish') {
-      toggleFinishReady(pg.assets, team, player, pg.timeRemaining);
+      confirmFinishReady(pg.assets, team, player, pg.timeRemaining);
     }
   },
 

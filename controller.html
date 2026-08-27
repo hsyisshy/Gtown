@@ -150,14 +150,19 @@
 
   <!-- PLAYING: layout injected dynamically (active players) -->
   <div id="controls" class="hidden">
-    <div id="team-badge-controls" class="team-badge team-badge--small"></div>
+    <!-- Team badge + tap-to-open control legend toggle sit side by side up
+         top — the "？" used to float alone in the gamepad's empty middle
+         zone, but it reads more like "more info about the team you're on"
+         next to the badge than as an unrelated floating button. Content for
+         the popup is set per-game in src/controller/main.js from that
+         game's controller-layout.js `controls` export (see setControlsHelp). -->
+    <div id="controls-top-bar">
+      <div id="team-badge-controls" class="team-badge team-badge--small"></div>
+      <button id="controls-help-btn" class="hidden">？</button>
+    </div>
     <!-- game layout mounts here -->
     <div id="layout-root"></div>
 
-    <!-- Tap-to-open control legend for the currently mounted game — content
-         is set per-game in src/controller/main.js from that game's
-         controller-layout.js `controls` export (see setControlsHelp). -->
-    <button id="controls-help-btn" class="hidden">？</button>
     <div id="controls-help-popup" class="hidden">
       <p class="controls-help-title">操作說明</p>
       <div id="controls-help-list"></div>
@@ -168,26 +173,32 @@
   <div id="cheering" class="hidden">
     <div id="team-badge-cheer" class="team-badge team-badge--small"></div>
     <p class="cheer-title">為隊友加油！</p>
-    <div class="cheer-grid">
-      <button class="cheer-btn" data-emoji="fire"><img src="emoji/1.jpg" alt="🔥" /></button>
-      <button class="cheer-btn" data-emoji="like"><img src="emoji/2.jpg" alt="👍" /></button>
-      <button class="cheer-btn" data-emoji="cheer"><img src="emoji/3.jpg" alt="🙌" /></button>
-      <button class="cheer-btn" data-emoji="party"><img src="emoji/4.jpg" alt="🎉" /></button>
-      <button class="cheer-btn" data-emoji="star"><img src="emoji/5.jpg" alt="⭐" /></button>
-      <button class="cheer-btn" data-emoji="love"><img src="emoji/6.jpg" alt="❤️" /></button>
+    <div class="cheer-columns">
+      <div class="cheer-col cheer-col-emoji">
+        <div class="cheer-grid">
+          <button class="cheer-btn" data-emoji="fire"><img src="emoji/1.jpg" alt="🔥" /></button>
+          <button class="cheer-btn" data-emoji="like"><img src="emoji/2.jpg" alt="👍" /></button>
+          <button class="cheer-btn" data-emoji="cheer"><img src="emoji/3.jpg" alt="🙌" /></button>
+          <button class="cheer-btn" data-emoji="party"><img src="emoji/4.jpg" alt="🎉" /></button>
+          <button class="cheer-btn" data-emoji="star"><img src="emoji/5.jpg" alt="⭐" /></button>
+          <button class="cheer-btn" data-emoji="love"><img src="emoji/6.jpg" alt="❤️" /></button>
+        </div>
+      </div>
+      <div class="cheer-col cheer-col-text">
+        <div class="cheer-phrases">
+          <button class="cheer-phrase-btn" data-text="神操作漂亮！">神操作漂亮！</button>
+          <button class="cheer-phrase-btn" data-text="敵人消失！">敵人消失！</button>
+          <button class="cheer-phrase-btn" data-text="穩住我們能贏！">穩住我們能贏！</button>
+          <button class="cheer-phrase-btn" data-text="龜一點別太衝！">龜一點別太衝！</button>
+          <button class="cheer-phrase-btn" data-text="求求你別送頭！">求求你別送頭！</button>
+          <button class="cheer-phrase-btn" data-text="反擊啊！">反擊啊！</button>
+        </div>
+        <form id="cheer-text-form" class="cheer-text-form">
+          <input id="cheer-text-input" class="cheer-text-input" type="text" maxlength="16" placeholder="自己打字應援…" autocomplete="off" />
+          <button type="submit" class="cheer-text-send">送出</button>
+        </form>
+      </div>
     </div>
-    <div class="cheer-phrases">
-      <button class="cheer-phrase-btn" data-text="加油！">加油！</button>
-      <button class="cheer-phrase-btn" data-text="衝啊！">衝啊！</button>
-      <button class="cheer-phrase-btn" data-text="好樣的！">好樣的！</button>
-      <button class="cheer-phrase-btn" data-text="別放棄！">別放棄！</button>
-      <button class="cheer-phrase-btn" data-text="太強了！">太強了！</button>
-      <button class="cheer-phrase-btn" data-text="反擊啊！">反擊啊！</button>
-    </div>
-    <form id="cheer-text-form" class="cheer-text-form">
-      <input id="cheer-text-input" class="cheer-text-input" type="text" maxlength="16" placeholder="自己打字應援…" autocomplete="off" />
-      <button type="submit" class="cheer-text-send">送出</button>
-    </form>
     <p class="cheer-hint">你的隊友正在比賽</p>
   </div>
 

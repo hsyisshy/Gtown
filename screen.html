@@ -16,14 +16,14 @@
 
   <!-- OPENING VIDEO: one-time splash, dismissed by the button, then never shown again -->
   <div id="view-intro">
-    <video id="intro-video" src="Game_opening.mp4" playsinline></video>
+    <video id="intro-video" src="Game_opening.mp4" playsinline preload="auto"></video>
     <button id="intro-replay-btn">重播</button>
     <button id="intro-start-btn" class="primary-btn">開始遊戲</button>
   </div>
 
   <div id="ui-overlay">
 
-    <!-- LOBBY: title is baked into the lobby_bd.png background art -->
+    <!-- LOBBY: title is baked into the lobby_bd.webp background art -->
     <div id="view-lobby">
       <p id="player-count"></p>
       <div id="host-card" class="hidden"></div>

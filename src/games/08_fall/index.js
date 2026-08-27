@@ -82,12 +82,12 @@ const START_POSITION_SLOTS = [0, 2, 1, 3];
 
 // --- 圖片素材(角色圖預設朝左) -------------------------------------------------
 function loadImg(src) { const img = new Image(); img.src = src; return img; }
-const playerImages = [1, 2, 3, 4].map(n => loadImg(`08_fall/player/snowman${n}.png`));
-const obsSmallImg = loadImg('08_fall/obs/obs1.png');
-const obsBigImg = loadImg('08_fall/obs/obs2.png');
-const starImg = loadImg('08_fall/item/star.png');
-const gemImg = loadImg('08_fall/item/diamond.png');
-const bgImg = loadImg('08_fall/background.png');
+const playerImages = [1, 2, 3, 4].map(n => loadImg(`08_fall/player/snowman${n}.webp`));
+const obsSmallImg = loadImg('08_fall/obs/obs1.webp');
+const obsBigImg = loadImg('08_fall/obs/obs2.webp');
+const starImg = loadImg('08_fall/item/star.webp');
+const gemImg = loadImg('08_fall/item/diamond.webp');
+const bgImg = loadImg('08_fall/background.webp');
 const FALL_IMAGES = [...playerImages, obsSmallImg, obsBigImg, starImg, gemImg, bgImg];
 
 let fg = null; // module-level fall-game state
@@ -553,13 +553,13 @@ export default {
   requireFullTeams: true,
   color: '#5aa9c9',
   emoji: '❄️',
-  cover: '08_fall/fall_cover.png',
+  cover: '08_fall/fall_cover.webp',
 
   tutorial: {
     pages: [
-      '08_fall/tutorial/1.png',
-      '08_fall/tutorial/2.png',
-      '08_fall/tutorial/3.png',
+      '08_fall/tutorial/1.webp',
+      '08_fall/tutorial/2.webp',
+      '08_fall/tutorial/3.webp',
     ],
   },
 

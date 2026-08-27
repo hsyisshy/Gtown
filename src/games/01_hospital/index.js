@@ -9,7 +9,7 @@ export default {
   description: '2v2 對戰！扛擔架送汙染物，60 秒內比誰送得多',
   color: '#00e87a',
   emoji: '🏥',
-  cover: '01_hospital/hospital_cover.png',
+  cover: '01_hospital/hospital_cover.webp',
   playersPerTeam: 2,
   // Unlike climb/truck (which fill short teams gracefully), hospital's two
   // carriers are a rigid stretcher pair — a missing partner leaves half the
@@ -18,10 +18,10 @@ export default {
 
   tutorial: {
     pages: [
-      '01_hospital/tutorial/1.png',
-      '01_hospital/tutorial/2.png',
-      '01_hospital/tutorial/3.png',
-      '01_hospital/tutorial/4.png',
+      '01_hospital/tutorial/1.webp',
+      '01_hospital/tutorial/2.webp',
+      '01_hospital/tutorial/3.webp',
+      '01_hospital/tutorial/4.webp',
     ],
   },
 

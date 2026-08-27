@@ -268,9 +268,9 @@ function flipHorizontal(img) {
 }
 
 const CHARACTER_SOURCES = {
-  idle: '01_hospital/characters/player_idle.png',
-  walk1: '01_hospital/characters/player_walk1.png',
-  walk2: '01_hospital/characters/player_walk2.png',
+  idle: '01_hospital/characters/player_idle.webp',
+  walk1: '01_hospital/characters/player_walk1.webp',
+  walk2: '01_hospital/characters/player_walk2.webp',
 };
 const SPRITE_CACHE = { idle: {}, walk1: {}, walk2: {} };
 let spritesReady = false;
@@ -310,9 +310,9 @@ const ZOMBIE_VARIANTS = [
 ];
 
 const ZOMBIE_SOURCES = {
-  idle: '01_hospital/zombies/zombie_idle.png',
-  walk1: '01_hospital/zombies/zombie_walk1.png',
-  walk2: '01_hospital/zombies/zombie_walk2.png',
+  idle: '01_hospital/zombies/zombie_idle.webp',
+  walk1: '01_hospital/zombies/zombie_walk1.webp',
+  walk2: '01_hospital/zombies/zombie_walk2.webp',
 };
 const ZOMBIE_SPRITE_CACHE = { idle: [], walk1: [], walk2: [] };
 let zombieSpritesReady = false;
@@ -339,7 +339,7 @@ let zombieSpritesReady = false;
 /* =========================================================================
    POLLUTANT SPRITE (1 row x 5 columns, frame N shows the stack at N layers)
    ========================================================================= */
-const POLLUTANT_SOURCE = '01_hospital/pollutant/pollutant_stack.png';
+const POLLUTANT_SOURCE = '01_hospital/pollutant/pollutant_stack.webp';
 const POLLUTANT_DRAW_H = 150;
 let pollutantSprite = null;
 let pollutantFrameW = 0;
@@ -392,7 +392,7 @@ function computeAlphaBBox(imgData, x0, x1, height) {
 /* =========================================================================
    BACKGROUND
    ========================================================================= */
-const BACKGROUND_SOURCE = '01_hospital/background.png';
+const BACKGROUND_SOURCE = '01_hospital/background.webp';
 let backgroundImg = null;
 (function loadBackground() {
   const img = new Image();

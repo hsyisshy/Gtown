@@ -4,7 +4,7 @@ export const LOGICAL_W = 1600;
 export const LOGICAL_H = 900;
 
 export const PLAY_SECONDS = 120;
-export const PIECES_PER_TEAM = 25;
+export const PIECES_PER_TEAM = 15;
 export const RACK_SCALE = 0.1;
 export const CURSOR_SIZE = 22;
 export const MOVE_SPEED = 260; // logical px / sec — slow enough for precise placement

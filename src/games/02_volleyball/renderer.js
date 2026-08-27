@@ -6,13 +6,13 @@ import {
 // --- Sprite assets — preloaded at module import so they're decoded well
 // before a match starts (same pattern as truck/animals).
 const bgImg = new Image();
-bgImg.src = '02_volleyball/volleyball_bg.png';
+bgImg.src = '02_volleyball/volleyball_bg.webp';
 
 const SPRITES = { red: [], blue: [] };
 for (const team of ['red', 'blue']) {
   for (let i = 1; i <= 3; i++) {
     const img = new Image();
-    img.src = `02_volleyball/characters/${team}_player${i}.png`;
+    img.src = `02_volleyball/characters/${team}_player${i}.webp`;
     SPRITES[team].push(img);
   }
 }

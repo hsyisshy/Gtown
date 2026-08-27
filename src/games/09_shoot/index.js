@@ -83,10 +83,10 @@ function loadImage(path) {
   img.src = path;
   return img;
 }
-const bgImg = loadImage('09_shoot/background.png');
+const bgImg = loadImage('09_shoot/background.webp');
 const SPRAY_IMAGES = {
-  red:  loadImage('09_shoot/player/spray1.png'),
-  blue: loadImage('09_shoot/player/spray2.png'),
+  red:  loadImage('09_shoot/player/spray1.webp'),
+  blue: loadImage('09_shoot/player/spray2.webp'),
 };
 const SHOOT_IMAGES = [bgImg, SPRAY_IMAGES.red, SPRAY_IMAGES.blue];
 
@@ -467,14 +467,14 @@ export default {
   requireFullTeams: true,
   color: '#e94057',
   emoji: '🎨',
-  cover: '09_shoot/shoot_cover.png',
+  cover: '09_shoot/shoot_cover.webp',
 
   tutorial: {
     pages: [
-      '09_shoot/tutorial/1.png',
-      '09_shoot/tutorial/2.png',
-      '09_shoot/tutorial/3.png',
-      '09_shoot/tutorial/4.png',
+      '09_shoot/tutorial/1.webp',
+      '09_shoot/tutorial/2.webp',
+      '09_shoot/tutorial/3.webp',
+      '09_shoot/tutorial/4.webp',
     ],
   },
 

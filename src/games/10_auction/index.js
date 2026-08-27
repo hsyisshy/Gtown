@@ -61,17 +61,17 @@ function loadImage(path) {
   return img;
 }
 
-const bgImg = loadImage('10_auction/background.png');
+const bgImg = loadImage('10_auction/background.webp');
 const GIFT_IMG = {
-  angel:  loadImage('10_auction/gifts/angel.png'),
-  devil:  loadImage('10_auction/gifts/devil.png'),
-  normal: loadImage('10_auction/gifts/normal.png'),
-  good:   loadImage('10_auction/gifts/good.png'),
-  bad:    loadImage('10_auction/gifts/bad.png'),
+  angel:  loadImage('10_auction/gifts/angel.webp'),
+  devil:  loadImage('10_auction/gifts/devil.webp'),
+  normal: loadImage('10_auction/gifts/normal.webp'),
+  good:   loadImage('10_auction/gifts/good.webp'),
+  bad:    loadImage('10_auction/gifts/bad.webp'),
 };
 const GIFT_FRAMES = {
-  angel: Array.from({ length: 8 }, (_, i) => loadImage(`10_auction/gifts/angel-${i}.png`)),
-  devil: Array.from({ length: 8 }, (_, i) => loadImage(`10_auction/gifts/devil-${i}.png`)),
+  angel: Array.from({ length: 8 }, (_, i) => loadImage(`10_auction/gifts/angel-${i}.webp`)),
+  devil: Array.from({ length: 8 }, (_, i) => loadImage(`10_auction/gifts/devil-${i}.webp`)),
 };
 const AUCTION_IMAGES = [bgImg, ...Object.values(GIFT_IMG), ...GIFT_FRAMES.angel, ...GIFT_FRAMES.devil];
 
@@ -613,19 +613,14 @@ export default {
   requireFullTeams: true,
   color: '#e6a62d',
   emoji: '🔨',
-  cover: '10_auction/auction_cover.png',
+  cover: '10_auction/auction_cover.webp',
 
   tutorial: {
-    goal: '2v2 秘密出價拍賣！每輪五份神秘禮物，同隊兩人出價相加，出價最高的隊伍得標並立刻付款。得標後開箱有機率拿到好禮物（加倍拿回金幣）或壞禮物（出價直接沒收）。5 輪結束後金幣較多的隊伍獲勝！',
-    controls: [
-      { key: '🎚️', text: '拖曳滑桿決定這一輪要出多少金幣（隊友與對手都看不到）' },
-      { key: '🔒', text: '鎖定出價（鎖定前可以隨時修改；雙方都鎖定後倒數會縮短到 5 秒）' },
-    ],
-    tips: [
-      '天使禮物好禮物機率高但賠率低，惡魔禮物好禮物機率低但賠率高達 4 倍，普通禮物機率各半',
-      '出到 0 元也算出價，只要同隊總和比對方高就能得標；雙方都出 0 則本輪流標',
-      '得標金額會立刻從隊伍金幣扣除，開箱結果之後才知道是賺是賠',
-      '每人單輪出價上限是隊伍目前金幣的一半，金幣愈少能出的價愈低',
+    pages: [
+      '10_auction/tutorial/1.webp',
+      '10_auction/tutorial/2.webp',
+      '10_auction/tutorial/3.webp',
+      '10_auction/tutorial/4.webp',
     ],
   },
 

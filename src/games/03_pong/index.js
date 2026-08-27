@@ -23,7 +23,7 @@ const BALL_SPEED_MAX  = 220; // cap at 4.4x — still reactable, just a lot more
 const PADDLE_HIT_DEPTH = 3;
 
 const bgImg = new Image();
-bgImg.src = '03_pong/pong_bg.png';
+bgImg.src = '03_pong/pong_bg.webp';
 
 // pong_bg.png draws a decorative black+white picture-frame border OUTSIDE
 // the actual white court line — logical space (0-200 x, 0-100 y) needs to
@@ -145,12 +145,12 @@ export default {
   playersPerTeam: 1,
   color: '#00cfff',
   emoji: '🏓',
-  cover: '03_pong/pong_cover.png',
+  cover: '03_pong/pong_cover.webp',
 
   tutorial: {
     pages: [
-      '03_pong/tutorial/1.png',
-      '03_pong/tutorial/2.png',
+      '03_pong/tutorial/1.webp',
+      '03_pong/tutorial/2.webp',
     ],
   },
 

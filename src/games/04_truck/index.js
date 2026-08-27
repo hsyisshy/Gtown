@@ -18,20 +18,32 @@ import { TEAM_COLOR } from '../../shared/constants.js';
 import { preloadImages, drawAssetLoadingPlaceholder } from '../../shared/assetPreload.js';
 import { bgm, SFX } from './audio.js';
 
-const LOGICAL_W = 1600, LOGICAL_H = 900;
-const ARENA = { cx: LOGICAL_W / 2, cy: LOGICAL_H / 2, rx: 580, ry: 300 };
+// PLAY_W is the original arena/HUD space, untouched by the sidebar — the
+// leaderboard lives in an extra SIDEBAR_W-wide strip bolted onto the right
+// of it, so LOGICAL_W (what actually gets letterboxed to the screen) is
+// wider than the arena itself. Anything that used to center on/right-align
+// to LOGICAL_W (the old edge) now anchors to PLAY_W instead, so the arena
+// and HUD don't shift or shrink to make room.
+const PLAY_W = 1600, LOGICAL_H = 900;
+const SIDEBAR_W = 380;
+const LOGICAL_W = PLAY_W + SIDEBAR_W;
+const ARENA = { cx: PLAY_W / 2, cy: LOGICAL_H / 2, rx: 580, ry: 300 };
 
-const ROUND_TIME = 65;
+const ROUND_TIME = 60;
 const TRUCKS_PER_TEAM = 3;
 
-const TRUCK_W = 64, TRUCK_H = 37, TRUCK_RADIUS = 34;
+// Trucks/animals sized up ~30% from the original prototype scale — bigger
+// silhouettes read better on a shared screen, and the bigger hitboxes make
+// the already-cramped 3v3 arena even more collision-heavy.
+const TRUCK_W = 84, TRUCK_H = 48, TRUCK_RADIUS = 44;
 const MAX_SPEED = 320, ACCEL = 480, DECEL = 340;
 const SPIN_RATE = 3.6;      // 沒按加速時原地自轉的角速度
 const HIT_COOLDOWN = 0.6;
 const MIN_HIT_DIFF = 90;    // 速度差(或撞牆時的速度)要超過這個值才算「撞到」
 
 const WANDER_SPEED = 55;
-const ANIMAL_DRAW_SIZE = 38;
+const ANIMAL_DRAW_SIZE = 50;
+const ANIMAL_RADIUS = 8; // wall-clamp radius in ellipseClamp(), scaled with the bigger sprite
 
 const ANIMAL_IMAGE_NAMES = ['elephant', 'giraffe', 'hippo', 'monkey', 'panda', 'parrot', 'penguin', 'pig', 'rabbit', 'snake'];
 let animalImages = null;
@@ -45,15 +57,15 @@ function loadAnimalImages() {
 }
 
 const arenaBgImg = new Image();
-arenaBgImg.src = '04_truck/truck_bg.png';
+arenaBgImg.src = '04_truck/truck_bg.webp';
 
-const TRUCK_DRAW_W = 74; // slightly larger than the flat-rect footprint (64) — the art reads better a touch bigger
+const TRUCK_DRAW_W = 96; // larger than the flat-rect footprint (84) — the art reads better a touch bigger
 const TRUCK_SPRITES = {
   red: new Image(),
   blue: new Image(),
 };
-TRUCK_SPRITES.red.src = '04_truck/characters/truck2.png';
-TRUCK_SPRITES.blue.src = '04_truck/characters/truck.png';
+TRUCK_SPRITES.red.src = '04_truck/characters/truck2.webp';
+TRUCK_SPRITES.blue.src = '04_truck/characters/truck.webp';
 // The new art draws the cab on the left / bed on the right — backwards
 // relative to angle=0 meaning "facing +x" — so flip 180° at draw time
 // rather than re-export mirrored assets.
@@ -217,7 +229,7 @@ function updateAnimal(a, dt) {
     a.y += Math.sin(a.wanderAngle) * WANDER_SPEED * dt;
   }
 
-  const c = ellipseClamp(a.x, a.y, 6);
+  const c = ellipseClamp(a.x, a.y, ANIMAL_RADIUS);
   if (c.hit) {
     a.x = c.x; a.y = c.y;
     if (a.state === 'flying') {
@@ -256,13 +268,13 @@ export default {
   requireFullTeams: true,
   color: '#7ec850',
   emoji: '🚚',
-  cover: '04_truck/truck_cover.png',
+  cover: '04_truck/truck_cover.webp',
 
   tutorial: {
     pages: [
-      '04_truck/tutorial/1.png',
-      '04_truck/tutorial/2.png',
-      '04_truck/tutorial/3.png',
+      '04_truck/tutorial/1.webp',
+      '04_truck/tutorial/2.webp',
+      '04_truck/tutorial/3.webp',
     ],
   },
 
@@ -338,7 +350,7 @@ export default {
     if (!tk) return;
     if (!tk.assetsReady) { drawAssetLoadingPlaceholder(ctx, w, h, '卡車亂鬥'); return; }
 
-    // Letterbox: uniform scale of the 1600x900 logical space
+    // Letterbox: uniform scale of the full logical space (arena + sidebar)
     const scale = Math.min(w / LOGICAL_W, h / LOGICAL_H);
     const offX = (w - LOGICAL_W * scale) / 2;
     const offY = (h - LOGICAL_H * scale) / 2;
@@ -355,6 +367,7 @@ export default {
     const leaderCargo = Math.max(0, ...tk.trucks.map(t => t.cargo.length));
     for (const t of tk.trucks) drawTruck(ctx, t, leaderCargo);
     drawHud(ctx);
+    drawLeaderboard(ctx);
 
     ctx.restore();
   },
@@ -398,6 +411,26 @@ function drawArena(ctx) {
 }
 
 function drawTruck(ctx, t, leaderCargo) {
+  // Whoever currently holds (or ties) the top cargo count gets a pulsing
+  // gold glow — a deliberate "target" callout so the room can see who to
+  // gang up on, not just a subtle stat difference buried in the sidebar.
+  const isLeader = leaderCargo > 0 && t.cargo.length === leaderCargo;
+  const pulse = isLeader ? 0.6 + Math.sin(Date.now() / 220) * 0.4 : 0; // 0.2..1.0
+
+  if (isLeader) {
+    ctx.save();
+    ctx.translate(t.x, t.y);
+    const glowR = TRUCK_DRAW_W * 0.9;
+    const grad = ctx.createRadialGradient(0, 0, glowR * 0.15, 0, 0, glowR);
+    grad.addColorStop(0, `rgba(255, 215, 0, ${0.55 * pulse})`);
+    grad.addColorStop(1, 'rgba(255, 215, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, glowR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   const sprite = TRUCK_SPRITES[t.team];
   ctx.save();
   ctx.translate(t.x, t.y);
@@ -405,26 +438,36 @@ function drawTruck(ctx, t, leaderCargo) {
     ctx.rotate(t.angle + TRUCK_SPRITE_ROTATION);
     const drawW = TRUCK_DRAW_W;
     const drawH = drawW * (sprite.naturalHeight / sprite.naturalWidth);
-    if (t.hitTimer > 0) ctx.filter = 'brightness(1.7) saturate(0.6)';
+    if (t.hitTimer > 0) {
+      ctx.filter = 'brightness(1.7) saturate(0.6)';
+    } else if (isLeader) {
+      ctx.shadowColor = 'rgba(255, 215, 0, 0.95)';
+      ctx.shadowBlur = 16 + pulse * 14;
+    }
     ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
   } else {
     ctx.rotate(t.angle);
     ctx.fillStyle = t.hitTimer > 0 ? '#ffffffaa' : t.color;
+    if (isLeader) {
+      ctx.shadowColor = 'rgba(255, 215, 0, 0.95)';
+      ctx.shadowBlur = 16 + pulse * 14;
+    }
     ctx.fillRect(-TRUCK_W / 2, -TRUCK_H / 2, TRUCK_W, TRUCK_H);
+    ctx.shadowBlur = 0;
     ctx.fillStyle = '#222';
     ctx.fillRect(TRUCK_W / 2 - 8, -TRUCK_H / 2, 8, TRUCK_H);
   }
   ctx.restore();
 
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 15px "Noto Sans TC", sans-serif';
+  ctx.font = 'bold 19px "Noto Sans TC", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${t.name} 🐾${t.cargo.length}`, t.x, t.y - 34);
+  ctx.fillText(`${t.name} 🐾${t.cargo.length}`, t.x, t.y - 44);
 
-  if (leaderCargo > 0 && t.cargo.length === leaderCargo) {
-    ctx.font = '22px sans-serif';
-    ctx.fillText('👑', t.x, t.y - 54);
+  if (isLeader) {
+    ctx.font = '28px sans-serif';
+    ctx.fillText('👑', t.x, t.y - 70);
   }
 }
 
@@ -452,7 +495,7 @@ function drawHud(ctx) {
   ctx.textBaseline = 'top';
   ctx.font = 'bold 34px "Noto Sans TC", sans-serif';
   ctx.fillStyle = '#fff';
-  ctx.fillText(`⏱ ${Math.ceil(tk.timeLeft)}`, LOGICAL_W / 2, 14);
+  ctx.fillText(`⏱ ${Math.ceil(tk.timeLeft)}`, PLAY_W / 2, 14);
 
   ctx.font = 'bold 26px "Noto Sans TC", sans-serif';
   ctx.textAlign = 'left';
@@ -460,7 +503,64 @@ function drawHud(ctx) {
   ctx.fillText(`🔴 ${redTotal}`, 40, 18);
   ctx.textAlign = 'right';
   ctx.fillStyle = TEAM_COLOR.blue;
-  ctx.fillText(`${blueTotal} 🔵`, LOGICAL_W - 40, 18);
+  ctx.fillText(`${blueTotal} 🔵`, PLAY_W - 40, 18);
+}
+
+// Individual leaderboard — all 6 trucks ranked by cargo count, drawn in the
+// SIDEBAR_W strip to the right of the arena (see LOGICAL_W). Ties share a
+// rank (1224-style) since early game especially, several trucks often sit
+// on the same count.
+function drawLeaderboard(ctx) {
+  const panelX = PLAY_W;
+  const ranked = [...tk.trucks].sort((a, b) => b.cargo.length - a.cargo.length);
+  const ranks = ranked.map((t, i) => (i > 0 && t.cargo.length === ranked[i - 1].cargo.length) ? null : i + 1);
+  for (let i = 1; i < ranks.length; i++) if (ranks[i] === null) ranks[i] = ranks[i - 1];
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(20, 22, 26, 0.88)';
+  ctx.fillRect(panelX, 0, SIDEBAR_W, LOGICAL_H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(panelX, 0);
+  ctx.lineTo(panelX, LOGICAL_H);
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 30px "Noto Sans TC", sans-serif';
+  ctx.fillText('排行榜', panelX + SIDEBAR_W / 2, 20);
+
+  const rowY0 = 74, rowH = 132, padX = 18;
+  ranked.forEach((t, i) => {
+    const y = rowY0 + i * rowH;
+    const isTop = ranks[i] === 1;
+    const pulse = isTop ? 0.6 + Math.sin(Date.now() / 220) * 0.4 : 0;
+
+    if (isTop) {
+      ctx.fillStyle = `rgba(255, 215, 0, ${0.16 + pulse * 0.1})`;
+      ctx.fillRect(panelX + 8, y, SIDEBAR_W - 16, rowH - 10);
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = isTop ? '#ffd700' : 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 44px "Noto Sans TC", sans-serif';
+    ctx.fillText(`#${ranks[i]}`, panelX + padX, y + 8);
+
+    ctx.fillStyle = TEAM_COLOR[t.team];
+    ctx.font = 'bold 15px "Noto Sans TC", sans-serif';
+    ctx.fillText(t.team === 'red' ? '🔴 紅隊' : '🔵 藍隊', panelX + padX + 92, y + 12);
+
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 22px "Noto Sans TC", sans-serif';
+    ctx.fillText(t.name, panelX + padX + 92, y + 34);
+
+    ctx.fillStyle = '#ffe98a';
+    ctx.font = 'bold 30px "Noto Sans TC", sans-serif';
+    ctx.fillText(`🐾 ${t.cargo.length}`, panelX + padX + 92, y + 64);
+  });
+  ctx.restore();
 }
 
 // --- helpers ----------------------------------------------------------------

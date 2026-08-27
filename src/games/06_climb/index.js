@@ -78,9 +78,9 @@ function loadImage(path) {
   return img;
 }
 for (const key of ALIEN_KEYS) {
-  SPRITE_IMAGES[key] = { walk: loadImage(`06_climb/${key}/${key}_walk.png`) };
+  SPRITE_IMAGES[key] = { walk: loadImage(`06_climb/${key}/${key}_walk.webp`) };
 }
-const backgroundImg = loadImage('06_climb/climb_background.png');
+const backgroundImg = loadImage('06_climb/climb_background.webp');
 const CLIMB_IMAGES = [backgroundImg, ...ALIEN_KEYS.map(key => SPRITE_IMAGES[key].walk)];
 const BG_PARALLAX = 0.35; // 背景捲動只有鏡頭的 35%,製造星空縱深感
 
@@ -1219,13 +1219,13 @@ export default {
   requireFullTeams: true,
   color: '#8f7ee0',
   emoji: '🧗',
-  cover: '06_climb/climb_cover.png',
+  cover: '06_climb/climb_cover.webp',
 
   tutorial: {
     pages: [
-      '06_climb/tutorial/1.png',
-      '06_climb/tutorial/2.png',
-      '06_climb/tutorial/3.png',
+      '06_climb/tutorial/1.webp',
+      '06_climb/tutorial/2.webp',
+      '06_climb/tutorial/3.webp',
     ],
   },
 
