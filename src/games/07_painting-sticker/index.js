@@ -724,18 +724,31 @@ function drawCursors(ctx, assets, teams) {
       ctx.strokeRect(player.cursor.x - CURSOR_SIZE / 2, player.cursor.y - CURSOR_SIZE / 2, CURSOR_SIZE, CURSOR_SIZE);
       ctx.lineWidth = 1;
 
-      // Name tag — same "dark chip, team-tinted text" treatment as
-      // volleyball's drawNameplate, so a player can tell which square is
-      // theirs at a glance instead of having to remember slot 0 vs 1's tint.
+      // Name tag — tinted chip + cream text (like the header pill), not
+      // dark chip + tinted text like the first pass. Team_DIM (the slot-1
+      // tint) is a dark muted color, so putting IT on the text against an
+      // already-dark chip left almost no contrast — hard to read at a
+      // glance, which was the whole point of the tag. Cream-on-color reads
+      // clearly regardless of which of the two tints a player got.
       if (player.name) {
         const tagY = player.cursor.y - CURSOR_SIZE / 2 - 8;
-        ctx.font = `700 13px ${FONT_BODY}`;
+        ctx.font = `800 13px ${FONT_BODY}`;
         ctx.textAlign = 'center';
         const textW = ctx.measureText(player.name).width;
         const padX = 6;
-        ctx.fillStyle = 'rgba(20, 15, 10, 0.7)';
-        ctx.fillRect(player.cursor.x - textW / 2 - padX, tagY - 13, textW + padX * 2, 18);
+        const chipW = textW + padX * 2;
+        const chipH = 18;
+        const chipX = player.cursor.x - chipW / 2;
+        const chipY = tagY - 13;
         ctx.fillStyle = cursorColor;
+        ctx.beginPath();
+        ctx.roundRect(chipX, chipY, chipW, chipH, 9);
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = INK;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.fillStyle = CREAM;
         ctx.fillText(player.name, player.cursor.x, tagY);
         ctx.textAlign = 'left';
       }
